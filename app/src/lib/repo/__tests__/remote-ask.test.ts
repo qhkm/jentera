@@ -162,6 +162,23 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('says when a failed quick reply only ran out of time', async () => {
+    const failed = (extra: Record<string, unknown>) => vi.fn()
+      .mockResolvedValueOnce(response({ ok: true, pending: true, status: 'queued', runId: ANSWER.runId }, 202))
+      .mockResolvedValueOnce(response({ ok: true, pending: false, status: 'failed', runId: ANSWER.runId, err: 'Timed out.', ...extra }));
+    vi.stubGlobal('fetch', failed({ retryWithMoreTime: true }));
+    await expect(new RemoteRepository().ask('ask growth')).rejects.toMatchObject({ message: 'Timed out.', retryWithMoreTime: true });
+    vi.stubGlobal('fetch', failed({}));
+    await expect(new RemoteRepository().ask('ask growth')).rejects.not.toHaveProperty('retryWithMoreTime');
+  });
+
+  it('asks for deep mode when told to', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' }));
+    vi.stubGlobal('fetch', fetch);
+    await new RemoteRepository().ask('ask growth', { responseMode: 'deep' });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ question: 'ask growth', responseMode: 'deep' });
+  });
+
   it('reuses one idempotency key when the queue signal needs a retry', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response({

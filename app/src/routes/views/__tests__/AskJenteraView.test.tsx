@@ -532,6 +532,25 @@ describe('compose-first Ask Jentera', () => {
       expect.objectContaining({ mode: 'work' }),
     );
   });
+
+  it('sends a quick reply that ran out of time again in deep mode, leaving the draft alone', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    repo.ask = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('This reply timed out.'), { retryWithMoreTime: true }))
+      .mockResolvedValueOnce({ text: 'The full growth plan.', grounded: false, usedKeys: [] });
+    await mount(<Harness />, repo);
+    const input = await screen.findByRole('textbox');
+    await user.type(input, 'ask growth how to grow');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    const moreTime = await screen.findByRole('button', { name: 'Give it more time' });
+    await user.type(input, 'half-typed next question');
+    await user.click(moreTime);
+    expect(await screen.findByText('The full growth plan.')).toBeInTheDocument();
+    expect(repo.ask).toHaveBeenLastCalledWith('ask growth how to grow', expect.objectContaining({ responseMode: 'deep' }));
+    expect(input).toHaveValue('half-typed next question');
+  });
 });
 
 describe('usable replies', () => {

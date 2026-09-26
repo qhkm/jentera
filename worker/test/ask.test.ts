@@ -16,6 +16,7 @@ import { asOwner, asTenant, truncateAll } from './harness';
 import { answer, prepareHermesAgent, retrieve, retrieveHermesContext,
   boundedAgentInput,
 } from '../src/ask';
+import { QUICK_RUN_CAP_SECONDS } from '../src/runtime/response-mode';
 import { RUNNER_INSTRUCTIONS_MAX } from '../src/runtime/runner-client';
 import { recordFact } from '../src/facts';
 import { recentWork, recordWork, startRun } from '../src/runs';
@@ -377,6 +378,22 @@ describe('the durable Hermes agent request', () => {
     expect(quick.instructions).toMatch(/one focused search/i);
     expect(quick.instructions).toMatch(/Do not create scratch files, run code, use the terminal/i);
     expect(deep.instructions).not.toMatch(/Quick response contract/);
+  });
+
+  it('tells a Quick turn its time limit and to hand heavy work back rather than delegate it', () => {
+    const quick = prepareHermesAgent(
+      'can u ask growth how do i make the growth happens', [], [], new Date('2026-09-26T01:00:00.000Z'),
+      undefined, undefined, 'quick',
+    );
+    const deep = prepareHermesAgent(
+      'can u ask growth how do i make the growth happens', [], [], new Date('2026-09-26T01:00:00.000Z'),
+      undefined, undefined, 'deep',
+    );
+    expect(QUICK_RUN_CAP_SECONDS).toBe(300);
+    expect(quick.instructions).toMatch(/stops after 5 minutes/);
+    expect(quick.instructions).toMatch(/Do not delegate to another agent or specialist/);
+    expect(quick.instructions).toMatch(/Give it more time/);
+    expect(deep.instructions).not.toMatch(/stops after 5 minutes/);
   });
 
   it('carries confirmed business context without restricting the agent to it', () => {

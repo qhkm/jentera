@@ -1,5 +1,13 @@
 export type ResponseMode = 'quick' | 'deep';
 
+/** A quick reply is one chat turn. The business budget allows a run up to
+    max_run_seconds (900 by default) and deep work keeps that; a chat turn
+    still running after five minutes is stuck, and five minutes is what it
+    should cost. The runner enforces the deadline it is handed, so this
+    holds even when the worker loses track of the task. On 2026-09-03 a
+    two-word follow-up ran for 7 h 15 min before any limit applied. */
+export const QUICK_RUN_CAP_SECONDS = 300;
+
 export interface ModelRoutingEnv {
   AISAR_MODEL_NAME?: string;
   AISAR_DEEP_MODEL_NAME?: string;

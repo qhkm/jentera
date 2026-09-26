@@ -828,6 +828,7 @@ async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => 
       pending?: boolean;
       status?: string;
       err?: string;
+      retryWithMoreTime?: boolean;
     };
     try {
       state = await call<typeof state>(`/api/runs/${encodeURIComponent(runId)}`, { signal: AbortSignal.timeout(15000) });
@@ -843,7 +844,9 @@ async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => 
     if (state.pending) onPending?.();
     if (!state.pending && state.status === 'completed') return state;
     if (!state.pending && state.status) {
-      throw new Error(state.err ?? 'Jentera could not complete that answer.');
+      const failure = new Error(state.err ?? 'Jentera could not complete that answer.');
+      /* A quick reply that ran out of its five minutes; deep mode has longer. */
+      throw state.retryWithMoreTime === true ? Object.assign(failure, { retryWithMoreTime: true }) : failure;
     }
   }
   throw new Error('Jentera is taking longer than expected. Check Activity for the result.');

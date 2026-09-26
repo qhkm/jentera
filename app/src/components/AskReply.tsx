@@ -10,7 +10,7 @@ import { CalendarConnectCard } from '@/components/CalendarConnectCard';
 import { StopWork } from './StopWork';
 import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
-import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
+import { ArrowUpRight, Check, Clock, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMascot } from '@/components/JenteraMascot';
 import { ElapsedSince } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
@@ -69,12 +69,15 @@ function StepsList({ steps, live, since }: { steps: string[]; live: boolean; sin
 export function AskReply({
   message,
   onRetry,
+  onRetryWithMoreTime,
   onOpenActivity,
   onOpenBusinessBrowser,
   onContinueTask,
 }: {
   message: AskMessage;
   onRetry: () => void;
+  /** Sends the failed question again in deep mode. */
+  onRetryWithMoreTime?: () => void;
   onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenBusinessBrowser?: () => void;
   onContinueTask?: (context: string, sessionId?: string) => void;
@@ -228,7 +231,17 @@ export function AskReply({
             )}
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
           {missingImages.length > 0 && <p className="task-recovery-note" role="status">Some images weren’t attached: {missingImages.join(', ')}. Ask Jentera to attach them again.</p>}
-          {failed && durableWork ? (
+          {failed && message.retryWithMoreTime && onRetryWithMoreTime ? (
+            /* The run ended at the quick cap, so it is not "still running",
+               and the same request would stop at the same place. */
+            <>
+              <p className="task-recovery-note">{t('ask.moreTime.note')}</p>
+              <button type="button" className="ask-inline-action" onClick={onRetryWithMoreTime}>
+                <Clock size={16} aria-hidden="true" />
+                {t('ask.moreTime')}
+              </button>
+            </>
+          ) : failed && durableWork ? (
             <>
               <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
               {onOpenActivity && (

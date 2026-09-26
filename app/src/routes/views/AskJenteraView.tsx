@@ -335,6 +335,14 @@ export default function AskJenteraView({
     });
   }
 
+  /* A quick reply that ran out of time, sent again in deep mode. Not
+     through submit: the composer's draft and attachment are not this turn's. */
+  function retryWithMoreTime(question: string, mode: AskMode) {
+    if (browserPaused || previewExhausted) return;
+    scroll.jumpToLatest();
+    ask.send(question, preview ? 'work' : mode, undefined, [], 'deep');
+  }
+
   function submit(text = draft, mode?: AskMode) {
     const body = text.trim() || (attachment ? t('ask.attachment.defaultPrompt') : '');
     if (!body || browserPaused || previewExhausted) return;
@@ -432,6 +440,9 @@ export default function AskJenteraView({
                         submit(message.failedQuestion ?? '', message.failedMode ?? 'work');
                       }
                     }}
+                    onRetryWithMoreTime={message.failedQuestion && !message.inputFiles?.length && !busy
+                      ? () => retryWithMoreTime(message.failedQuestion!, message.failedMode ?? 'work')
+                      : undefined}
                     onOpenActivity={onOpenActivity}
                     onOpenBusinessBrowser={signedIn ? () => setBrowserOpenRequest(n => n + 1) : undefined}
                     onContinueTask={signedIn && !busy ? prepareContinuation : undefined}

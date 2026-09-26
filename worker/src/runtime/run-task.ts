@@ -23,7 +23,7 @@ import { markRuntimeUsageStarted, reserveRuntimeUsage } from './usage';
 import { runtimeTaskIsCancelled } from './tasks';
 import { append } from '../runs';
 import type { ResponseMode } from './response-mode';
-import { modelForResponseMode } from './response-mode';
+import { modelForResponseMode, QUICK_RUN_CAP_SECONDS } from './response-mode';
 import { specialistProfileValid, type SpecialistProfile } from '../specialists';
 import { isDirectDeepSeek } from '../model-upstream';
 
@@ -52,14 +52,6 @@ export function stoppedRunOutcome(response: RunnerTaskResponse | null, remoteRun
     hold at all: an idle sprite pauses and the first message after a pause
     pays the wake. Unset or unparseable still means 24. */
 const KEEPALIVE_GRACE_HOURS_DEFAULT = 24;
-
-/** A quick reply is one chat turn. The business budget allows a run up to
-    max_run_seconds (900 by default) and deep work keeps that; a chat turn
-    still running after five minutes is stuck, and five minutes is what it
-    should cost. The runner enforces the deadline it is handed, so this
-    holds even when the worker loses track of the task. On 2026-09-03 a
-    two-word follow-up ran for 7 h 15 min before any limit applied. */
-export const QUICK_RUN_CAP_SECONDS = 300;
 
 /* How stale an unstarted request may be before answering it is pointless.
    Ten minutes is far past any honest wake — a cold sprite bootstraps in about

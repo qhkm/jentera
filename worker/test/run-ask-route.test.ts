@@ -610,6 +610,32 @@ describe('Ask Jentera runtime bridge', () => {
     expect(FAILURE_NOTICES.provider_quota).not.toMatch(/litellm|HTTP/);
   });
 
+  it('offers more time only for a quick reply that ran out of time', async () => {
+    await readyRuntime(A);
+    const failedWith = async (notice: string, responseMode?: 'deep') => {
+      const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+        question: 'can u ask growth how do i grow', requestId: crypto.randomUUID(), mode: 'work',
+        ...(responseMode ? { responseMode } : {}),
+      });
+      const { runId } = await started.json() as { runId: string };
+      await asOwner(async (sql) => {
+        await sql`update runtime_task set status = 'failed', result = ${sql.json({ error: 'run deadline exceeded' })} where run_id = ${runId}`;
+        await sql`update run set status = 'failed', ended_at = now() where id = ${runId}`;
+        await sql`insert into work_record (business_id, run_id, objective, outcome, status, function, channel, risk, kind)
+                  values (${A}, ${runId}, 'can u ask growth', ${notice}, 'failed', 'ask', 'app', 'low', 'conversation')`;
+      });
+      return await (await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA)).json() as Record<string, unknown>;
+    };
+
+    expect(await failedWith(FAILURE_NOTICES.timeout)).toMatchObject({
+      status: 'failed', err: FAILURE_NOTICES.timeout, retryWithMoreTime: true,
+    });
+    // deep already had the full budget; more of the same is not on offer
+    expect(await failedWith(FAILURE_NOTICES.timeout, 'deep')).not.toHaveProperty('retryWithMoreTime');
+    // a quick reply that failed for another reason gains nothing from time
+    expect(await failedWith(FAILURE_NOTICES.provider_unavailable)).not.toHaveProperty('retryWithMoreTime');
+  });
+
   it('tells the chat and Activity whether a finished run was conversation or work', async () => {
     await readyRuntime(A);
     const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {

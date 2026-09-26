@@ -241,6 +241,26 @@ describe('AskReply: conversation versus work', () => {
       expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
     } finally { fetch.mockRestore(); }
   });
+  it('offers more time, not a plain retry, when a quick reply ran out of it', async () => {
+    const user = userEvent.setup();
+    const moreTime = vi.fn();
+    const failed = (extra: Partial<AskMessage>) => render(
+      <RepositoryProvider repository={new LocalRepository()}><I18nProvider><ToastProvider>
+        <AskReply message={{ from: 'ai', text: 'This reply timed out.', state: 'failed', runId: RUN, mode: 'work',
+          failedQuestion: 'ask growth how to grow', failedMode: 'work', ...extra }}
+          onOpenActivity={() => {}} onRetry={() => {}} onRetryWithMoreTime={moreTime} />
+      </ToastProvider></I18nProvider></RepositoryProvider>);
+
+    const timedOut = failed({ retryWithMoreTime: true });
+    await user.click(await screen.findByRole('button', { name: 'Give it more time' }));
+    expect(moreTime).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/may still be running/)).toBeNull();
+    timedOut.unmount();
+
+    failed({});
+    await screen.findByRole('button', { name: 'Check task status' });
+    expect(screen.queryByRole('button', { name: 'Give it more time' })).toBeNull();
+  });
   it('offers the reminder card, not a second “continue” path, when a reply waits on a reminder', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: false, err: 'Not found' }), { status: 404 }));
     const waiting = (text: string) => render(

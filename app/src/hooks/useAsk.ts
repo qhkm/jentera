@@ -61,6 +61,8 @@ export interface AskMessage {
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
+  /** The failure was a quick reply running out of time; deep mode has longer. */
+  retryWithMoreTime?: boolean;
   /** Real runtime state used by the live work card. */
   /** streaming: answer text is arriving and `text` is the partial answer. */
   state?: 'sending' | AskProgress | 'streaming' | 'done' | 'failed';
@@ -536,6 +538,7 @@ export function useAsk(
       announceWorkChange();
     }, (reason: unknown) => {
       const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
+      const retryWithMoreTime = (reason as { retryWithMoreTime?: unknown } | null)?.retryWithMoreTime === true;
       setState((prev) => {
         const index = prev.sessions.findIndex((s) => s.id === sessionId);
         if (index === -1) return prev;
@@ -551,6 +554,7 @@ export function useAsk(
                     text,
                     failedQuestion: question,
                     failedMode: mode,
+                    ...(retryWithMoreTime ? { retryWithMoreTime: true } : {}),
                     runId: message.runId,
                     taskTitle: question,
                     state: 'failed' as const,
@@ -599,7 +603,7 @@ export function useAsk(
   }, [persisted, repo, patchPending, settlePending, t]);
 
   const send = useCallback(
-    (raw: string, mode?: AskMode, attachment?: File, selectedSkills: string[] = []) => {
+    (raw: string, mode?: AskMode, attachment?: File, selectedSkills: string[] = [], responseMode?: 'deep') => {
       const question = raw.trim();
       if (!question) return;
       const sessionId = activeIdRef.current;
@@ -607,7 +611,7 @@ export function useAsk(
       const goalId = session?.goalId;
       const goalCheckpointId = session?.goalCheckpointId;
       const selectedMode = goalId ? 'work' : mode ?? automaticAskMode(question, Boolean(attachment));
-      const depth = automaticResponseDepth(question);
+      const depth = responseMode ?? automaticResponseDepth(question);
       const now = Date.now();
       const inputFiles = attachment
         ? [{ name: attachment.name, contentType: attachment.type || 'application/octet-stream', size: attachment.size }]
@@ -654,6 +658,7 @@ export function useAsk(
           ...(goalCheckpointId ? { goalCheckpointId } : {}),
           ...(attachment ? { attachment } : {}),
           ...(selectedSkills.length ? { selectedSkills } : {}),
+          ...(responseMode ? { responseMode } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;
             patchPending(sessionId, pendingId, (message) => ({

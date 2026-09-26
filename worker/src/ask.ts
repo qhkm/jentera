@@ -23,7 +23,7 @@ import {
   RUNNER_INPUT_MAX,
   RUNNER_INSTRUCTIONS_MAX,
 } from './runtime/runner-client';
-import type { ResponseMode } from './runtime/response-mode';
+import { QUICK_RUN_CAP_SECONDS, type ResponseMode } from './runtime/response-mode';
 
 export interface Answer {
   text: string;
@@ -330,7 +330,12 @@ const QUICK_TURN_PROMPT = `Quick response contract:
 - Do not create scratch files, run code, use the terminal, or delegate merely to prepare an answer.
   Use those capabilities only when the user explicitly asks for that work or accuracy requires it.
 - Stop as soon as you have enough evidence and answer concisely. Quick means efficient, not less
-  truthful: never skip verification, an approval, or a required action check.`;
+  truthful: never skip verification, an approval, or a required action check.
+- This reply stops after ${QUICK_RUN_CAP_SECONDS / 60} minutes, and anything unfinished by then is lost.
+  Do not delegate to another agent or specialist in a quick reply, even when asked to "ask" one;
+  answer in that role yourself. When the request needs longer research, many steps or edits,
+  give the useful short answer you can now and say the full job needs more time: the owner can
+  send it again with /deep, or use Give it more time if this reply runs out.`;
 
 /**
  * Where a fact came from, in words the model can repeat verbatim.

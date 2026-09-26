@@ -320,6 +320,30 @@ describe('useAsk durable answers', () => {
       state: 'failed',
       mode: 'work',
     });
+    expect(result.current!.messages[1]).not.toHaveProperty('retryWithMoreTime');
+  });
+
+  it('offers more time for a quick reply that ran out of it, and asks for deep mode on retry', async () => {
+    const repo: Repository = new LocalRepository();
+    const asked: (string | undefined)[] = [];
+    repo.ask = async (_question, options) => {
+      asked.push(options?.responseMode);
+      if (asked.length === 1) throw Object.assign(new Error('Timed out.'), { retryWithMoreTime: true });
+      return { text: 'The full growth plan.', usedKeys: [], grounded: false };
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+
+    act(() => result.current!.send('ask growth how to grow'));
+    await waitFor(() => expect(result.current!.messages[1]).toMatchObject({ state: 'failed', retryWithMoreTime: true }));
+    act(() => result.current!.send('ask growth how to grow', 'work', undefined, [], 'deep'));
+    await waitFor(() => expect(result.current!.messages[3]).toMatchObject({ state: 'done', text: 'The full growth plan.', depth: 'deep' }));
+    expect(asked).toEqual([undefined, 'deep']);
   });
 
   it('restores completed conversation history in the same browser tab', async () => {

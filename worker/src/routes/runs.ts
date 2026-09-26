@@ -47,7 +47,7 @@ import {
   type RuntimeTask,
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
-import { isFailureNotice } from '../runtime/failure-notice';
+import { FAILURE_NOTICES, isFailureNotice } from '../runtime/failure-notice';
 import { artifactsForRun } from '../artifacts';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
@@ -730,6 +730,12 @@ export async function handleRuns(
           artifacts: await artifactsForRun(tx, id.businessId, failedRunId),
         };
       });
+      /* A quick reply stops at QUICK_RUN_CAP_SECONDS; deep work gets the
+         business's whole run budget. On 25 Sep a request to "ask growth"
+         spent its five minutes on a sub-agent and the owner was told only
+         to try again, which would have run out of time the same way. */
+      const retryWithMoreTime = failedStatus === 'failed' && notice === FAILURE_NOTICES.timeout
+        && (state.task.payload as { responseMode?: unknown } | null)?.responseMode === 'quick';
       return json({
         ok: true,
         runId: state.run.id,
@@ -738,6 +744,7 @@ export async function handleRuns(
         err: state.run.status === 'cancelled'
           ? 'Jentera stopped that answer.'
           : notice ?? 'Jentera could not answer that just now. Please try again.',
+        ...(retryWithMoreTime ? { retryWithMoreTime: true } : {}),
         ...(steps.length ? { steps } : {}),
         ...(artifacts.length ? { artifacts } : {}),
       }, {}, privateHeaders);
