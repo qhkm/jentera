@@ -14,6 +14,7 @@ import {
   unreadableReply,
   VOICE_MAX_BYTES,
   VOICE_REPLIES,
+  withTypingIndicator,
 } from '../connectors/telegram';
 import { claimTelegramVoiceReply } from '../request-guard';
 import { isVaultTelegramCredential } from '../vault/telegram';
@@ -25,6 +26,11 @@ export type VoiceIntake =
   | { kind: 'heard'; message: TelegramIntakeQueueMessage; transcript: string }
   | { kind: 'admitted' }
   | { kind: 'answered' };
+
+/** How long a note may keep failing before the owner is told. The queue
+    retries every 60 s; without this a note retried through the dead-letter
+    queue for about 1 h 40 min and then vanished without a word. */
+export const VOICE_GIVE_UP_MS = 5 * 60_000;
 
 export async function hearTelegramVoice(
   env: Env,
@@ -52,17 +58,23 @@ export async function hearTelegramVoice(
     return { kind: 'answered' };
   }
 
-  let audio: Uint8Array;
+  let heard: Awaited<ReturnType<typeof transcribeVoice>>;
   try {
-    audio = await downloadTelegramFile(token, voice.fileId, VOICE_MAX_BYTES);
+    /* A three-minute note takes about 30 s to hear; "typing…" says so. */
+    heard = await withTypingIndicator(token, incoming.chatId, async () =>
+      transcribeVoice(env.AI, await downloadTelegramFile(token, voice.fileId, VOICE_MAX_BYTES)),
+    { maxMs: 120_000 });
   } catch (error) {
     if (error instanceof TelegramFileTooLarge) {
       await say(VOICE_REPLIES.tooLong);
       return { kind: 'answered' };
     }
+    if (Date.now() - message.requestedAtMs >= VOICE_GIVE_UP_MS) {
+      await say(VOICE_REPLIES.failed);
+      return { kind: 'answered' };
+    }
     throw error; // transient: the queue tries again
   }
-  const heard = await transcribeVoice(env.AI, audio);
   if ('unintelligible' in heard) {
     await say(VOICE_REPLIES.unintelligible);
     return { kind: 'answered' };

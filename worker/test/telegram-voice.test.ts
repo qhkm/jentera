@@ -184,4 +184,22 @@ describe('a Telegram voice note', () => {
     expect(sent.indexOf(echoes[0])).toBe(0);
   });
 
+  it('shows the owner it is typing while it listens', async () => {
+    const { env, provider, intake } = await setup('Tolong semak stok.');
+    await handleRuntimeQueueMessage(env, intake(14), { provider });
+    expect(events.indexOf('typing')).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf('typing')).toBeLessThan(events.indexOf('transcribe'));
+  });
+
+  /* A note that keeps failing used to retry for about 1 h 40 min through the
+     dead-letter queue and then vanish without a word. */
+  it('tries again while a failing note is fresh, and says so once it has been failing for five minutes', async () => {
+    const { env, provider, intake } = await setup('never heard', { failDownload: true });
+    await expect(handleRuntimeQueueMessage(env, intake(15), { provider })).rejects.toThrow();
+    expect(sent).toEqual([]);
+    await expect(handleRuntimeQueueMessage(env, intake(15, '', Date.now() - 6 * 60_000), { provider }))
+      .resolves.toMatchObject({ action: 'ack' });
+    expect(sent).toEqual([VOICE_REPLIES.failed]);
+    expect(await asOwner((sql) => sql`select id from run where business_id = ${A}`)).toHaveLength(0);
+  });
 });

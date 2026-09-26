@@ -682,6 +682,7 @@ export const VOICE_MAX_BYTES = 5 * 1024 * 1024;
 export const VOICE_REPLIES = {
   tooLong: 'That voice note is longer than 10 minutes. Send a shorter one, or type your message.',
   unintelligible: 'I couldn’t make out that voice note. Please type your message.',
+  failed: 'I couldn’t fetch that voice note. Please send it again, or type your message.',
 } as const;
 
 export interface IncomingMessage {
