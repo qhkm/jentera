@@ -2538,7 +2538,11 @@ class SafeDeltaStreams {
           error: `Hermes approval failed (${response.status})`,
         };
       }
-      stream.pendingApprovals.shift();
+      /* Not shift(): dropHandoffApprovals can have removed a specialist's own
+         approval — including the one at the head — while this POST was in
+         flight, so the head by the time this resolves may no longer be the
+         approval just answered. Remove it by identity instead. */
+      stream.pendingApprovals = stream.pendingApprovals.filter((approval) => approval.requestId !== requestId);
       stream.approvalTargets.delete(requestId);
       stream.history = stream.history.filter(
         (event) => event.type !== 'approval' || event.requestId !== requestId,

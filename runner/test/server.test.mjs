@@ -1224,6 +1224,36 @@ test('an aged task quarantine stops the specialist working for it', async () => 
   release();
 });
 
+/* The test above alone does not prove attempt()'s own stopHandoffTask call
+   does anything: when quarantine succeeds, the slot frees and TASK_2's own
+   admission calls register(TASK_2), which independently stops whatever
+   task-1 specialist was still live — masking a missing stop inside
+   attempt() itself. Failing the root's own stop keeps the task quarantined
+   (not terminal), so the slot never frees and register(TASK_2) is never
+   reached; only attempt()'s own call can be what stops the specialist here. */
+test("a quarantine that cannot free the slot still stops the specialist on its own", async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [];
+  await start(TASK, { handoff: HANDOFF, responseMode: 'quick' });
+  const pending = handOff({ runId: 'run-1', specialist: 'records', brief: 'A long job' });
+  await waitFor(() => hermesPaths.includes('/p/records/v1/runs/run-2'), 3_000);
+
+  const stateFile = join(directory, 'state.json');
+  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  state.tasks[TASK].startedAt = Date.now() - 20 * 60 * 1000; /* quick bound: 15m */
+  await writeFile(stateFile, JSON.stringify(state));
+
+  try {
+    stopFailureStatus = 503;
+    assert.equal((await start(TASK_2)).status, 409);
+    assert.ok(hermesPaths.includes('/p/records/v1/runs/run-2/stop'));
+    assert.equal((await (await pending).json()).code, 'stopped');
+  } finally {
+    release();
+  }
+});
+
 test('a specialist approval left unanswered when its hand-off ends does not block a later one', async () => {
   const release = await withHandoffs();
   hermesStatus = 'completed'; /* the first specialist's poll loop concludes at once */
