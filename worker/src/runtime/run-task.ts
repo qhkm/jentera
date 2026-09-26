@@ -1,4 +1,5 @@
 import type { Env } from '../env';
+import type { HandoffTaskField } from '../handoff';
 import {
   getRuntime,
   getRuntimeAccess,
@@ -93,6 +94,7 @@ export interface RunPayload {
     privateChat: boolean;
     liveMessageId?: number;
   };
+  handoff?: HandoffTaskField;
 }
 
 export type RuntimeRunOutcome =
@@ -264,6 +266,7 @@ export async function dispatchRuntimeRun(
     profile: payload.profile,
     responseMode: payload.responseMode,
     selectedSkills: payload.selectedSkills,
+    ...(payload.handoff ? { handoff: payload.handoff } : {}),
     // Existing runners admit only their bootstrapped model names. Let their
     // Quick/Deep default select that route; the proxy maps its legacy DeepSeek
     // alias to the canonical model. New runners already default to canonical.
@@ -462,7 +465,7 @@ export function measuredUsageOf(
   return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
 }
 
-function runPayload(value: unknown): RunPayload {
+export function runPayload(value: unknown): RunPayload {
   if (!value || typeof value !== 'object') throw new Error('runtime run payload is invalid');
   const body = value as Record<string, unknown>;
   const input = typeof body.input === 'string' ? body.input.trim() : '';
@@ -501,7 +504,21 @@ function runPayload(value: unknown): RunPayload {
       ? body.requestedAtMs
       : undefined,
     telegram: telegramDelivery(body.telegram),
+    handoff: handoffField(body.handoff),
   };
+}
+
+/* Malformed limits run the task without hand-offs rather than failing it:
+   the task is still worth doing, and the runner would refuse them anyway. */
+function handoffField(value: unknown): HandoffTaskField | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const field = value as Record<string, unknown>;
+  const maxDepth = Number(field.maxDepth);
+  const maxHandoffs = Number(field.maxHandoffs);
+  if (!Number.isSafeInteger(maxDepth) || maxDepth < 1 || maxDepth > 2) return undefined;
+  if (!Number.isSafeInteger(maxHandoffs) || maxHandoffs < 1 || maxHandoffs > 5) return undefined;
+  if (typeof field.preamble !== 'string' || !field.preamble.trim() || field.preamble.length > 4_000) return undefined;
+  return { maxDepth, maxHandoffs, preamble: field.preamble };
 }
 
 function skillIds(value: unknown): string[] | undefined {

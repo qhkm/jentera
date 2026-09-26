@@ -117,6 +117,17 @@ describe('the rendered configuration document', () => {
   it('refuses a schema it cannot render', async () => {
     await expect(renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA + 1)).rejects.toThrow(ConfigSchemaUnsupported);
   });
+
+  it('carries the hand-off switch only for a business on it, and leaves everyone else unchanged', async () => {
+    const at = new Date('2026-09-26T00:00:00Z');
+    const off = await renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA, at);
+    const alsoOff = await renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA, at, [], {}, { handoff: false });
+    const on = await renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA, at, [], {}, { handoff: true });
+    expect(off.handoff).toBeUndefined();
+    expect(alsoOff.version).toBe(off.version);
+    expect(on.handoff).toEqual({ enabled: true });
+    expect(on.version).not.toBe(off.version);
+  });
 });
 
 describe('the runtime config route', () => {

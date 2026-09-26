@@ -78,6 +78,10 @@ export interface Env {
   /** Disabled by default. Both flag and explicit business UUID pilot list required. */
   DESKTOP_VIEW_ENABLED?: string;
   DESKTOP_VIEW_BUSINESS_IDS?: string;
+  /** Specialists hand work to each other (docs/plans/2026-09-26-specialist-handoff.md). */
+  HANDOFF_ENABLED?: string;
+  /** Exact business UUIDs on the hand-off pilot, comma-separated; empty means nobody. */
+  HANDOFF_BUSINESS_IDS?: string;
   /* Apps pilot (docs/plans/2026-09-23-apps-shell-and-bookings-v1.md).
      Exact business ids only, like desktop view: an empty list is nobody. */
   APPS_ENABLED?: string;

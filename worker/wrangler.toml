@@ -213,6 +213,10 @@ AISAR_QUICK_MODEL_OVERRIDES = ""
 # allowlist together; desktopEnabledFor rejects wildcards and malformed IDs.
 DESKTOP_VIEW_ENABLED = "true"
 DESKTOP_VIEW_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
+# Specialists hand work to each other (docs/plans/2026-09-26-specialist-handoff.md).
+# A pilot: exact business UUIDs, comma-separated; empty means nobody.
+HANDOFF_ENABLED = "true"
+HANDOFF_BUSINESS_IDS = ""
 # Routines (deterministic reports plus Sprite-backed agent tasks). Canary first.
 # Canary: Kitakod Ventures only, 2026-09-09. Empty allowlist = every business.
 ROUTINES_ENABLED = "true"

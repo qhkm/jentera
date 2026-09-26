@@ -30,6 +30,7 @@ export interface RuntimeConfigDocument {
   hermes: { web: Record<string, string> };
   hermesEnv: Record<string, string>;
   specialists: Pick<SpecialistDefinition, 'profile' | 'name' | 'description' | 'instructions'>[];
+  handoff?: { enabled: true };
 }
 
 export class ConfigSchemaUnsupported extends Error {
@@ -97,6 +98,7 @@ export async function renderRuntimeConfig(
   now: Date = new Date(),
   specialists: readonly SpecialistDefinition[] = [],
   runtimeCredentials: Readonly<Record<string, string>> = {},
+  options: { handoff?: boolean } = {},
 ): Promise<RuntimeConfigDocument> {
   if (schema !== CONFIG_SCHEMA) throw new ConfigSchemaUnsupported(schema);
 
@@ -130,6 +132,9 @@ export async function renderRuntimeConfig(
       description: specialist.description,
       instructions: specialist.instructions,
     })),
+    /* Present only for a business on the hand-off pilot, so every other
+       business's document, and so its version, stays byte for byte the same. */
+    ...(options.handoff ? { handoff: { enabled: true as const } } : {}),
   };
   return {
     ...body,

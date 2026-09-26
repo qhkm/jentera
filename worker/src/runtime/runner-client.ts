@@ -54,6 +54,8 @@ export interface RunnerTaskRequest {
       before admission and keeps stopping Hermes until termination is
       confirmed; callers must not refresh it on retry. */
   deadlineAt?: number;
+  /** Present when this task may hand work to specialists (docs/plans/2026-09-26-specialist-handoff.md). */
+  handoff?: { maxDepth: number; maxHandoffs: number; preamble: string };
 }
 
 export interface RunnerTaskResponse {

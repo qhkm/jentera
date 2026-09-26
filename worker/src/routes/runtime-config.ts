@@ -26,6 +26,7 @@ import {
 } from '../runtime/config-document';
 import { listSpecialists } from '../specialists';
 import { recordEgress, type EgressDeferral } from '../runtime/egress';
+import { handoffEnabledFor } from '../handoff';
 
 export const RUNTIME_CONFIG_PATH = '/v1/runtime/config';
 
@@ -96,6 +97,7 @@ export async function handleRuntimeConfig(
       new Date(),
       configured.specialists,
       configured.credentials,
+      { handoff: handoffEnabledFor(env, identity.businessId) },
     );
     return json(document, 200, headers);
   } catch (err) {
