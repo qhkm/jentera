@@ -583,10 +583,16 @@ export function createRunner(input) {
     hermes: (path, init, profile) => hermes(config, path, init, profile),
     events: (runId, profile, signal) => hermesEvents(config, runId, profile, signal),
     emit: (taskId, event, target) => streams.emitNested(taskId, event, target),
+    ended: (taskId, runId) => streams.dropHandoffApprovals(taskId, runId),
     translate: nestedHermesEvent,
     roster: () => configChannel.roster?.() ?? [],
     enabled: () => configChannel.handoffEnabled?.() === true,
   });
+  /* A specialist's tokens are the task's tokens: threaded into every place
+     that can freeze a task's terminal record, not only the two request
+     routes — the watchdog, /readyz and admission all read the run's status
+     through activeTask and may be first to see it end. */
+  const handoffUsageOf = (taskId) => handoffs.usageOf(taskId);
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
   let admittingTaskId = null;
@@ -604,11 +610,12 @@ export function createRunner(input) {
     state,
     streams,
     (taskId) => admittingTaskId === taskId,
+    { handoffUsage: handoffUsageOf, stopTask: (taskId) => handoffs.stopTask(taskId) },
   );
   /* A document must not change under a run in flight: Hermes reads its config
      when the agent is created, so swapping mid-run would give one task two
      configurations. */
-  const slotBusy = async () => admitting || Boolean(await businessBrowser?.isPaused()) || Boolean(await activeTask(config, state, terminations));
+  const slotBusy = async () => admitting || Boolean(await businessBrowser?.isPaused()) || Boolean(await activeTask(config, state, terminations, handoffUsageOf));
 
   /* Started in the background and never awaited: /readyz must not wait on the
      control plane, and a sprite whose control plane is away has to come up on
@@ -634,7 +641,7 @@ export function createRunner(input) {
        expired task is quarantined even between requests. unref keeps test
        processes and idle runtimes free to exit. */
     watchdog = setInterval(() => {
-      void activeTask(config, state, terminations)
+      void activeTask(config, state, terminations, handoffUsageOf)
         .then((active) => {
           if (active) {
             console.warn(`[watchdog] slot held by ${active.taskId} (started ${active.startedAt ?? 'unknown'})`);
@@ -675,7 +682,16 @@ export function createRunner(input) {
         if (!sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
           return json(res, 401, { ok: false, error: 'unauthorized' });
         }
-        const body = await readJson(req);
+        let body;
+        try {
+          body = await readJson(req);
+        } catch (error) {
+          /* readJson's JSON.parse failure carries a message that can quote the
+             body verbatim (a specialist's brief). Answer without it, and
+             never let it reach the runner.error log the outer catch writes. */
+          if (error?.code === 'BODY_TOO_LARGE') return json(res, 413, { ok: false, error: 'body too large' });
+          return json(res, 400, { ok: false, error: 'body is not JSON' });
+        }
         const problem = handoffRequestProblem(body);
         if (problem) return json(res, 400, { ok: false, error: problem });
         return json(res, 200, await handoffs.request(body));
@@ -729,7 +745,7 @@ export function createRunner(input) {
         if (admitting) return json(res, 409, { error: 'runtime_busy' });
         admitting = true;
         try {
-          if (await activeTask(config, state, terminations)) return json(res, 409, { error: 'runtime_busy' });
+          if (await activeTask(config, state, terminations, handoffUsageOf)) return json(res, 409, { error: 'runtime_busy' });
           const removed = await forgetAgentMemory(config, body);
           if (!removed) return json(res, 404, { error: 'not_found' });
           return json(res, 200, { ok: true });
@@ -755,10 +771,10 @@ export function createRunner(input) {
                 !['quarantined', 'expiring'].includes(active.status) &&
                 !(typeof active.deadlineAt === 'number' && Date.now() >= active.deadlineAt));
             });
-            const active = await activeTask(config, state, terminations);
+            const active = await activeTask(config, state, terminations, handoffUsageOf);
             if (!active || active.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
             const frame = await businessBrowser.preview();
-            const stillActive = await activeTask(config, state, terminations);
+            const stillActive = await activeTask(config, state, terminations, handoffUsageOf);
             if (!stillActive || stillActive.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
             return json(res, 200, frame);
           }
@@ -767,7 +783,7 @@ export function createRunner(input) {
           if (admitting) return json(res, 409, { error: 'runtime_busy' });
           admitting = true;
           try {
-            const active = await activeTask(config, state, terminations);
+            const active = await activeTask(config, state, terminations, handoffUsageOf);
             if (active) return json(res, 409, { error: 'runtime_busy' });
             return json(res, 200, await businessBrowser.command(body));
           }
@@ -804,7 +820,7 @@ export function createRunner(input) {
         /* Reconcile the slot on probe: a dead/expired task is quarantined
            even when no new task arrives to trigger it (health checks hit
            this endpoint periodically). */
-        const active = await activeTask(config, state, terminations);
+        const active = await activeTask(config, state, terminations, handoffUsageOf);
         /* The slot was just reconciled, so this is the natural moment to let a
            held document land: the probe runs periodically whether or not a
            task arrives. Never allowed to fail the probe — a config that will
@@ -876,7 +892,7 @@ export function createRunner(input) {
           });
         }
 
-        const active = await activeTask(config, state, terminations);
+        const active = await activeTask(config, state, terminations, handoffUsageOf);
         const browserPaused = await businessBrowser?.isPaused();
         if (active || admitting || browserPaused) {
           /* Say which kind of busy this is. An owner holding the browser and a
@@ -1428,7 +1444,7 @@ function validated(config) {
   };
 }
 
-async function activeTask(config, state, terminations, now = Date.now()) {
+async function activeTask(config, state, terminations, handoffUsage, now = Date.now()) {
   for (const saved of await state.all()) {
     if (TERMINAL.has(saved.status) || savedTerminalStatus(saved)) continue;
     /* L2: a task may hold the runner only for a bounded interval. Hermes
@@ -1486,7 +1502,7 @@ async function activeTask(config, state, terminations, now = Date.now()) {
     }
     const current = await responseJson(response);
     if (typeof current?.status === 'string') {
-      const observed = await persistObservedStatus(state, saved, current, { config });
+      const observed = await persistObservedStatus(state, saved, current, { config, handoffUsage });
       if (!TERMINAL.has(observed.status)) {
         return { ...saved, status: observed.status, startedAt: saved.startedAt ?? null };
       }
@@ -1942,15 +1958,26 @@ class StateStore {
  * gone. Failed or merely accepted stops stay persisted as expiring/
  * quarantined and are retried, so freeing the slot can never strand work. */
 class RunTerminations {
-  constructor(config, state, streams, admissionInFlight) {
+  constructor(config, state, streams, admissionInFlight, deps = {}) {
     this.config = config;
     this.state = state;
     this.streams = streams;
     this.admissionInFlight = admissionInFlight;
+    this.handoffUsage = deps.handoffUsage;
+    this.stopHandoffTask = deps.stopTask;
     this.deadlines = new Map();
     this.retries = new Map();
     this.operations = new Map();
     this.closed = false;
+  }
+
+  /** A specialist's tokens are the task's tokens; merged only into a measured
+   *  figure, the same rule persistObservedStatus applies on the request
+   *  routes — this is the same merge for the paths that freeze a terminal
+   *  record without going through it (deadline, quarantine, orphan). */
+  mergedUsage(taskId, usage) {
+    const handoffUsage = this.handoffUsage?.(taskId);
+    return handoffUsage && usage ? addUsage(usage, handoffUsage) : usage;
   }
 
   async restore() {
@@ -2008,6 +2035,11 @@ class RunTerminations {
   }
 
   async attempt(taskId, terminalStatus, reason) {
+    /* A specialist working for this task would otherwise keep going for up
+       to its own budget after the task itself is quarantined or expired,
+       with nothing left able to stop it once the slot is freed for the next
+       task. Stop it first, before the root itself is asked to stop. */
+    await this.stopHandoffTask?.(taskId);
     const saved = await this.state.get(taskId);
     const frozen = savedTerminalStatus(saved);
     if (frozen) {
@@ -2152,8 +2184,11 @@ class RunTerminations {
   }
 
   async finalize(saved, terminalStatus, reason, observed) {
+    const bounded = boundedTaskStatus(observed);
+    const usage = this.mergedUsage(saved.taskId, bounded.usage);
     const terminal = {
-      ...boundedTaskStatus(observed),
+      ...bounded,
+      ...(usage ? { usage } : {}),
       status: terminalStatus,
       error: reason,
     };
@@ -2171,11 +2206,13 @@ class RunTerminations {
   }
 
   async adoptTerminal(saved, terminal) {
-    const record = { ...saved, status: terminal.status, terminal };
+    const usage = this.mergedUsage(saved.taskId, terminal.usage);
+    const merged = usage ? { ...terminal, usage } : terminal;
+    const record = { ...saved, status: merged.status, terminal: merged };
     await this.state.put(saved.taskId, record);
     this.clear(saved.taskId);
     this.streams.finishTask(saved.taskId);
-    return { record, terminal };
+    return { record, terminal: merged };
   }
 
   schedule(taskId, terminalStatus, reason) {
@@ -2438,6 +2475,22 @@ class SafeDeltaStreams {
       return;
     }
     this.emitEvent(stream, { ...event, seq: stream.nextSeq++ });
+  }
+
+  /** A hand-off's own approval lapses when it ends unanswered: left in place,
+   *  a stale head would block every later approval in the task from ever
+   *  resolving (resolveApproval only ever accepts the queue's head). */
+  dropHandoffApprovals(taskId, runId) {
+    const stream = this.streams.get(taskId);
+    if (!stream) return;
+    const stale = new Set();
+    for (const [requestId, target] of stream.approvalTargets) {
+      if (target.runId === runId) stale.add(requestId);
+    }
+    if (!stale.size) return;
+    stream.pendingApprovals = stream.pendingApprovals.filter((approval) => !stale.has(approval.requestId));
+    stream.history = stream.history.filter((event) => event.type !== 'approval' || !stale.has(event.requestId));
+    for (const requestId of stale) stream.approvalTargets.delete(requestId);
   }
 
   /** Bind the native Hermes request identity end to end. The in-flight

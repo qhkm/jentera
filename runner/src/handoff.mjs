@@ -129,8 +129,17 @@ export class HandoffEngine {
     this.runs = new Map();
   }
 
-  /** The task that just started. One task runs at a time, so any earlier one is forgotten. */
+  /** The task that just started. One task runs at a time, so any earlier one is forgotten.
+   *  Forgetting it is not enough on its own: a still-running previous task's
+   *  specialists would otherwise keep going with nothing left able to stop
+   *  them. Send their stop first — fire-and-forget, since register is
+   *  synchronous and only the calls need to be sent, not awaited. */
   register(taskId, { rootRunId, rootProfile, deadlineAt, model, handoff, outputsInstruction = '' }) {
+    for (const task of this.tasks.values()) {
+      task.stopped = true;
+      for (const run of task.liveRuns.values()) void run.stopOnce();
+      task.controller.abort();
+    }
     this.tasks.clear();
     this.runs.clear();
     if (!handoff) return;
@@ -277,6 +286,10 @@ export class HandoffEngine {
       signal.removeEventListener('abort', onAbort);
       task.liveRuns.delete(runId);
       this.runs.delete(runId);
+      /* This run's own pending approval, if it never got an answer, would
+         otherwise sit at the head of the task's approval queue forever and
+         block every later approval in the task. */
+      this.deps.ended?.(task.taskId, runId);
     }
   }
 

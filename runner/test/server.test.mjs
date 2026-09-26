@@ -1129,3 +1129,129 @@ test('stopping the task stops the specialist working for it', async () => {
   assert.ok(hermesPaths.includes('/p/records/v1/runs/run-2/stop'));
   release();
 });
+
+test('a malformed hand-off body answers 400 and never logs its bytes', async () => {
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => { logged.push(args.map(String).join(' ')); };
+  let response;
+  try {
+    response = await fetch(`${runnerOrigin}/v1/handoff`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${HERMES_KEY}`, 'Content-Type': 'application/json' },
+      body: 'password=hunter2 this is not json',
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { ok: false, error: 'body is not JSON' });
+  /* readJson's JSON.parse failure can quote the body in its own message; the
+     route must never let that reach a log, so nothing is logged at all. */
+  assert.equal(logged.length, 0);
+});
+
+test('a watchdog cycle that freezes the terminal record first still keeps the specialist usage', async () => {
+  await close(runnerServer);
+  runnerServer = createRunner({ ...runnerInput(), configChannel: handoffChannel(), watchdogMs: 20 });
+  runnerOrigin = await listen(runnerServer);
+  let release;
+  holdRootEvents = new Promise((resolve) => { release = resolve; });
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [
+    { event: 'run.completed', output: 'Handled.', usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 } },
+  ];
+  await start(TASK, { handoff: HANDOFF });
+  const response = await handOff({ runId: 'run-1', specialist: 'records', brief: 'Which invoices?' });
+  assert.equal(response.status, 200);
+  hermesStatus = 'completed';
+  release();
+  /* Give the 20ms watchdog at least one full cycle to observe the root as
+     completed and freeze the terminal record — before anything asks for it. */
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const status = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(status.status, 'completed');
+  assert.deepEqual(status.usage, { input_tokens: 142, output_tokens: 32, total_tokens: 174 });
+});
+
+test('an aged quarantine that finds the root already finished still keeps the specialist usage', async () => {
+  /* A deadline-based repro would need the hand-off's own 75s minimum time
+     budget (HANDOFF_MIN_MS + HANDOFF_ANSWER_RESERVE_MS) to have already
+     elapsed before the deadline could fire, which is impractical here; the
+     age-limit quarantine path reaches the very same RunTerminations.adoptTerminal
+     merge with a task that can actually finish its hand-off first. */
+  const release = await withHandoffs();
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [
+    { event: 'run.completed', output: 'Handled.', usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 } },
+  ];
+  await start(TASK, { handoff: HANDOFF, responseMode: 'quick' });
+  const response = await handOff({ runId: 'run-1', specialist: 'records', brief: 'Which invoices?' });
+  assert.equal((await response.json()).ok, true);
+
+  /* The root itself is already done by the time the age limit is checked, so
+     terminations.attempt() adopts it directly (adoptTerminal), without an
+     intervening stop call — the other of the two merge points in question. */
+  hermesStatus = 'completed';
+  const stateFile = join(directory, 'state.json');
+  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  state.tasks[TASK].startedAt = Date.now() - 20 * 60 * 1000; /* quick bound: 15m */
+  await writeFile(stateFile, JSON.stringify(state));
+
+  assert.equal((await start(TASK_2)).status, 202);
+  const quarantined = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(quarantined.status, 'completed');
+  assert.deepEqual(quarantined.usage, { input_tokens: 142, output_tokens: 32, total_tokens: 174 });
+  release();
+});
+
+test('an aged task quarantine stops the specialist working for it', async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [];
+  await start(TASK, { handoff: HANDOFF, responseMode: 'quick' });
+  const pending = handOff({ runId: 'run-1', specialist: 'records', brief: 'A long job' });
+  await waitFor(() => hermesPaths.includes('/p/records/v1/runs/run-2'), 3_000);
+
+  const stateFile = join(directory, 'state.json');
+  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  state.tasks[TASK].startedAt = Date.now() - 20 * 60 * 1000; /* quick bound: 15m */
+  await writeFile(stateFile, JSON.stringify(state));
+
+  assert.equal((await start(TASK_2)).status, 202);
+  assert.equal((await (await pending).json()).code, 'stopped');
+  assert.ok(hermesPaths.includes('/p/records/v1/runs/run-2/stop'));
+  release();
+});
+
+test('a specialist approval left unanswered when its hand-off ends does not block a later one', async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'completed'; /* the first specialist's poll loop concludes at once */
+  eventsByRun['run-2'] = [
+    { event: 'approval.request', request_id: 'c'.repeat(32), description: 'Create a draft invoice' },
+  ];
+  await start(TASK, { handoff: HANDOFF });
+  const first = await handOff({ runId: 'run-1', specialist: 'records', brief: 'Draft it' });
+  assert.equal(first.status, 200);
+
+  /* Before the fix, run-2's still-pending approval never leaves the queue,
+     so a later hand-off's own approval could never reach the head. */
+  hermesStatus = 'running';
+  eventsByRun['run-3'] = [
+    { event: 'approval.request', request_id: 'e'.repeat(32), description: 'Send the invoice' },
+  ];
+  const pending = handOff({ runId: 'run-1', specialist: 'records', brief: 'Send it' });
+  await waitFor(() => hermesPaths.includes('/p/records/v1/runs/run-3'), 3_000);
+
+  const decided = await call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: 'e'.repeat(32), decision: 'approve' }),
+  });
+  assert.equal(decided.status, 200);
+  assert.ok(hermesPaths.includes('/p/records/v1/runs/run-3/approval'));
+
+  hermesStatus = 'completed';
+  assert.equal((await (await pending).json()).ok, true);
+  release();
+});

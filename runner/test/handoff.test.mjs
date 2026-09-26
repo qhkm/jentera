@@ -418,3 +418,22 @@ test("a caller's own timeout that lands while its specialist's start POST is sti
   assert.equal(result.code, 'time');
   assert.ok(fake.calls.some((call) => call.path === '/v1/runs/run_growth_2/stop' && call.profile === 'growth'));
 });
+
+test('registering the next task stops a still-live specialist from the one before it', async () => {
+  const { handoffs, fake } = engine(() => []);
+  fake.events = async (_runId, _profile, signal) => hangingEvents(signal);
+  const pending = handoffs.request(ask('records', 'A long job'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  /* The next task is admitted before the previous one's specialist finished.
+     Forgetting it must not leave that specialist running with nothing left
+     able to stop it. */
+  handoffs.register('task-2', {
+    rootRunId: 'run_root_2', deadlineAt: NOW + 900_000, model: 'deep-model', handoff: LIMITS,
+  });
+
+  assert.equal((await pending).code, 'stopped');
+  assert.ok(fake.calls.some((call) => call.path === '/v1/runs/run_records_1/stop' && call.profile === 'records'));
+  /* The forgotten task's usage is gone with it — nothing to add it to any more. */
+  assert.equal(handoffs.usageOf('task-1'), null);
+});
