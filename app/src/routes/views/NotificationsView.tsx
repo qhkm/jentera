@@ -63,7 +63,6 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
                   <span><strong>{summary.total}</strong>{t('notifications.summary.recorded')}</span>
                   <span><strong>{summary.completed}</strong>{t('notifications.summary.completed')}</span>
                   <span className={summary.failed ? 'notification-summary-issue' : ''}><strong>{summary.failed}</strong>{t('notifications.summary.failed')}</span>
-                  {summary.minutes > 0 && <span><strong>{summary.minutes}</strong>{t('notifications.summary.minutes')}</span>}
                 </span>
                 {summary.failed > 0 && <span className="notification-summary-attention">
                   <WarningCircle size={16} aria-hidden="true" />

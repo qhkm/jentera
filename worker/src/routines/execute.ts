@@ -31,10 +31,9 @@ function compactSummaryNotification(inputs: Record<string, unknown>, lang: 'en' 
   const total = Number(inputs.total) || 0;
   const completed = Number(inputs.completed) || 0;
   const failed = Number(inputs.failed) || 0;
-  const minutes = Number(inputs.minutes) || 0;
   return lang === 'bm'
-    ? `${total} kerja direkodkan: ${completed} selesai, ${failed} gagal. ${minutes} minit dijimatkan.`
-    : `${total} ${total === 1 ? 'piece' : 'pieces'} of work recorded: ${completed} completed, ${failed} failed. ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} saved.`;
+    ? `${total} kerja direkodkan: ${completed} selesai, ${failed} gagal.`
+    : `${total} ${total === 1 ? 'piece' : 'pieces'} of work recorded: ${completed} completed, ${failed} failed.`;
 }
 
 export interface ExecutionResult {

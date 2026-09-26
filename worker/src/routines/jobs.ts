@@ -57,7 +57,10 @@ const REPORT_TASKS = ['business_summary', 'weekly_summary', 'approval_reminder']
 
 /** Work recorded in [end − window, end), counted in full and listed in part.
     Conversation is left out: a chat reply is a row too (migration 024), and
-    until 26 September "hey jentera" was counted as completed work. */
+    until 26 September "hey jentera" was counted as completed work.
+    Nor does it claim minutes saved. minutes_saved is a flat guess (3 per
+    Telegram task, 2 per fact learned) that app work never sets, so the line
+    read "0 minutes saved" on nearly every summary. */
 export async function summaryReport(
   tx: postgres.TransactionSql,
   kind: 'business_summary' | 'weekly_summary',
@@ -68,13 +71,12 @@ export async function summaryReport(
   const hours = windowHours(kind);
   const start = new Date(end.getTime() - hours * 3_600_000);
   const [totals] = await tx<{
-    total: string; completed: string; failed: string; cancelled: string; minutes: string;
+    total: string; completed: string; failed: string; cancelled: string;
   }[]>`
     select count(*)::text as total,
            count(*) filter (where status = 'completed')::text as completed,
            count(*) filter (where status = 'failed')::text as failed,
-           count(*) filter (where status = 'cancelled')::text as cancelled,
-           coalesce(sum(minutes_saved), 0)::text as minutes
+           count(*) filter (where status = 'cancelled')::text as cancelled
       from work_record
      where kind = 'work'
        and coalesce(inputs_used->>'task', '') not in ${tx(REPORT_TASKS)}
@@ -94,7 +96,6 @@ export async function summaryReport(
   const failed = Number(totals.failed);
   const cancelled = Number(totals.cancelled);
   const other = total - completed - failed - cancelled;
-  const minutes = Number(totals.minutes);
   const endLabel = formatInZone(end, timeZone, lang);
   /* A summary is an index of work, not a dump of agent transcripts. Outcomes
      can contain progress markers, file paths and hundreds of words; the task
@@ -115,7 +116,7 @@ export async function summaryReport(
       ? 'Tiada kerja direkodkan dalam tempoh ini.'
       : `${total} kerja direkodkan: ${completed} selesai, ${failed} gagal` +
         `${cancelled > 0 ? `, ${cancelled} dibatalkan` : ''}` +
-        `${other > 0 ? `, ${other} lain` : ''}. ${minutes} minit dijimatkan.`;
+        `${other > 0 ? `, ${other} lain` : ''}.`;
     text = [title, '', counts, ...(lines.length ? ['', ...lines] : []),
       ...(more > 0 ? ['', `…dan ${more} lagi.`] : [])].join('\n');
   } else {
@@ -126,13 +127,13 @@ export async function summaryReport(
       ? 'No work was recorded in this window.'
       : `${plural(total, 'piece of work', 'pieces of work')} recorded: ${completed} completed, ` +
         `${failed} failed${cancelled > 0 ? `, ${cancelled} cancelled` : ''}` +
-        `${other > 0 ? `, ${other} other` : ''}. ${plural(minutes, 'minute', 'minutes')} saved.`;
+        `${other > 0 ? `, ${other} other` : ''}.`;
     text = [title, '', counts, ...(lines.length ? ['', ...lines] : []),
       ...(more > 0 ? ['', `…and ${more} more.`] : [])].join('\n');
   }
   return {
     text: text.slice(0, TEXT_CAP),
-    inputs: { window: { from: start.toISOString(), to: end.toISOString() }, total, completed, failed, cancelled, minutes },
+    inputs: { window: { from: start.toISOString(), to: end.toISOString() }, total, completed, failed, cancelled },
   };
 }
 

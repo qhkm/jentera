@@ -5,7 +5,6 @@ export interface NotificationSummary {
   total: number;
   completed: number;
   failed: number;
-  minutes: number;
 }
 
 export function routineSummary(text: string): NotificationSummary | null {
@@ -16,7 +15,7 @@ export function routineSummary(text: string): NotificationSummary | null {
       : null;
   if (!period) return null;
   const counts = text.match(
-    /(\d+)\s+(?:pieces? of work recorded|work recorded|kerja direkodkan)\s*:\s*(\d+)\s+(?:completed|selesai)\s*,\s*(\d+)\s+(?:failed|gagal)(?:\s*,\s*\d+\s+(?:cancelled|dibatalkan))?(?:\s*,\s*\d+\s+(?:other|lain))?\.?\s*(\d+)\s+(?:minutes?|minit)\s+(?:saved|dijimatkan)/i,
+    /(\d+)\s+(?:pieces? of work recorded|work recorded|kerja direkodkan)\s*:\s*(\d+)\s+(?:completed|selesai)\s*,\s*(\d+)\s+(?:failed|gagal)(?:\s*,\s*\d+\s+(?:cancelled|dibatalkan))?(?:\s*,\s*\d+\s+(?:other|lain))?\./i,
   );
   if (!counts) return null;
   return {
@@ -24,12 +23,13 @@ export function routineSummary(text: string): NotificationSummary | null {
     total: Number(counts[1]),
     completed: Number(counts[2]),
     failed: Number(counts[3]),
-    minutes: Number(counts[4]),
   };
 }
 
 /** Read both current compact notifications and the older full-report format,
-    so already stored summaries become scannable without a data migration. */
+    so already stored summaries become scannable without a data migration.
+    Summaries until 26 September also claimed "N minutes saved", a flat
+    guess that is no longer shown; the line is read with or without it. */
 export function notificationSummary(item: AppNotification): NotificationSummary | null {
   if (item.kind !== 'routine_completed') return null;
   return routineSummary(`${item.title} ${item.body}`);

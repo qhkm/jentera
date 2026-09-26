@@ -23,7 +23,7 @@ describe('notificationSummary', () => {
     );
 
     expect(notificationSummary(item)).toEqual({
-      period: 'daily', total: 19, completed: 18, failed: 1, minutes: 0,
+      period: 'daily', total: 19, completed: 18, failed: 1,
     });
   });
 
@@ -34,7 +34,7 @@ describe('notificationSummary', () => {
     );
 
     expect(notificationSummary(item)).toEqual({
-      period: 'weekly', total: 26, completed: 22, failed: 4, minutes: 45,
+      period: 'weekly', total: 26, completed: 22, failed: 4,
     });
   });
 
@@ -42,11 +42,22 @@ describe('notificationSummary', () => {
     expect(notificationSummary(notification(
       'Daily summary',
       '3 pieces of work recorded: 1 completed, 0 failed, 1 cancelled, 1 other. 3 minutes saved.',
-    ))).toEqual({ period: 'daily', total: 3, completed: 1, failed: 0, minutes: 3 });
+    ))).toEqual({ period: 'daily', total: 3, completed: 1, failed: 0 });
     expect(notificationSummary(notification(
       'Ringkasan harian',
       '2 kerja direkodkan: 1 selesai, 0 gagal, 1 dibatalkan. 0 minit dijimatkan.',
-    ))).toEqual({ period: 'daily', total: 2, completed: 1, failed: 0, minutes: 0 });
+    ))).toEqual({ period: 'daily', total: 2, completed: 1, failed: 0 });
+  });
+
+  it('reads summaries that no longer claim minutes saved, in both languages', () => {
+    expect(notificationSummary(notification(
+      'Daily summary',
+      '2 pieces of work recorded: 1 completed, 0 failed, 1 cancelled.\n\n- Completed: Quote for Ali',
+    ))).toEqual({ period: 'daily', total: 2, completed: 1, failed: 0 });
+    expect(notificationSummary(notification(
+      'Ringkasan mingguan',
+      '1 kerja direkodkan: 1 selesai, 0 gagal.',
+    ))).toEqual({ period: 'weekly', total: 1, completed: 1, failed: 0 });
   });
 
   it('leaves ordinary completed notifications unchanged', () => {

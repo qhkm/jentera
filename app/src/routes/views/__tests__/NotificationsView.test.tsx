@@ -38,6 +38,34 @@ describe('notification inbox rows', () => {
     expect(card?.querySelector('.notification-side time')).toHaveAttribute('datetime', '2026-09-21T04:30:00.000Z');
   });
 
+  it('shows a summary card without the old minutes-saved guess', async () => {
+    const state = {
+      items: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        kind: 'routine_completed' as const,
+        title: 'Weekly summary',
+        body: '26 pieces of work recorded: 22 completed, 4 failed. 45 minutes saved.',
+        runId: '22222222-2222-4222-8222-222222222222',
+        routineId: '44444444-4444-4444-8444-444444444444',
+        occurrenceId: null,
+        url: null,
+        readAt: null,
+        createdAt: '2026-09-21T04:30:00.000Z',
+      }],
+      unread: 1, nextCursor: null, loading: false, loadingMore: false, error: null,
+      refresh: vi.fn(async () => {}), markRead: vi.fn(async () => {}),
+      markAll: vi.fn(async () => {}), loadMore: vi.fn(async () => {}),
+    };
+    render(<RepositoryProvider repository={new LocalRepository()}><I18nProvider><NotificationsView state={state} onOpenTask={vi.fn()} onOpenRoutine={vi.fn()} onOpenReview={vi.fn()} /></I18nProvider></RepositoryProvider>);
+    const metrics = await waitFor(() => {
+      const found = document.querySelector('.notification-summary-metrics');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(metrics).toHaveTextContent('26Recorded');
+    expect(metrics).not.toHaveTextContent(/45|saved/i);
+  });
+
   it('opens a booking request at its workspace link', async () => {
     const url = '/app?view=apps&app=bookings&booking=33333333-3333-4333-8333-333333333333';
     const onOpenUrl = vi.fn();

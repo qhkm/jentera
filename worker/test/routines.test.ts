@@ -222,7 +222,7 @@ describe('notifications', () => {
       routineId: routine.id,
       readAt: null,
       title: 'Daily summary',
-      body: '1 piece of work recorded: 1 completed, 0 failed. 3 minutes saved.',
+      body: '1 piece of work recorded: 1 completed, 0 failed.',
     });
     expect(owner.body.notifications[0].body).not.toContain('Done 1');
     expect((await notifications(cookieStaffA)).body.notifications).toEqual([]);
@@ -414,7 +414,9 @@ describe('run now', () => {
 
     const { request, url } = req('GET', `/api/runs/${res.body.occurrence.runId}`, { cookie: cookieOwnerA });
     const detail = (await (await handleRuns(request, env, url, cors))!.json()) as Body;
-    expect(detail.text).toContain('2 pieces of work recorded: 2 completed, 0 failed. 6 minutes saved.');
+    expect(detail.text).toContain('2 pieces of work recorded: 2 completed, 0 failed.');
+    // a flat guess per task is not a measured saving, so a summary does not claim one
+    expect(detail.text).not.toMatch(/minutes? saved/);
     expect(detail.text).toContain('Completed: Task 1');
     expect(detail.text).not.toContain('Chat 1');
   });
@@ -445,6 +447,7 @@ describe('run now', () => {
     const bm = await summary();
     expect(bm).toContain('3 kerja direkodkan: 1 selesai, 0 gagal, 1 dibatalkan, 1 lain.');
     expect(bm).toContain('Dibatalkan: Breakfast reminder');
+    expect(bm).not.toContain('dijimatkan');
   });
 
   it('does not count an earlier report as work, but counts scheduled agent work', async () => {
