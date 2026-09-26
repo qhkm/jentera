@@ -46,6 +46,17 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   `TAKEOVER_GRACE_MS` regardless — which also covers the other dead end,
   where nothing is waiting because another tab already took the update and
   SKIP_WAITING lands nowhere.
+- **A waiting worker does not mean the page is out of date.** Navigations
+  are network-first, so the first load after a deploy already runs the new
+  build while the new worker waits behind the old one, and it waits on
+  every later load until something tells it to take over. Until 26
+  September that showed "A new version of Jentera is ready" on a page
+  already running it. `PwaUpdateNotice` now asks `runsServedBuild`
+  (`pwa/served-build.ts`) first: it reads `/sw.js` with `no-store` and stays
+  quiet when that worker precaches every `/assets/` file the page loaded,
+  asking again for each newer worker found. The waiting worker is left
+  waiting, not activated silently: `clientsClaim` would take over any other
+  tab still on the old build, whose lazy chunks are gone from the deploy.
 - **The worker is registered from `AppRoutes`, for every route.**
   `<ServiceWorkerRegistration />` sat in `routes/Landing.tsx` until 23
   September, which `/` stopped rendering when LandingV3 took over
