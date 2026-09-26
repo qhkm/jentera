@@ -318,8 +318,11 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
         nextAvailable = null;
       }
     }
+    const selectedStartValue = url.searchParams.get('start');
+    const selectedStart = selectedStartValue ? new Date(selectedStartValue) : null;
     return page(timesPage({
       ...base, service: times.service, days: times.days, selected, nextAvailable,
+      selectedStart: selectedStart && !Number.isNaN(selectedStart.getTime()) ? selectedStart : null,
       notice: url.searchParams.get('notice') === 'taken' ? 'taken' : null,
     }));
   }

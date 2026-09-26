@@ -150,6 +150,19 @@ describe('sites: pages', () => {
     expect(html).toContain('<html lang="ms">');
     expect(html).toContain('10.00 pagi');
     expect(html).toContain('lang=bm');
+    expect(html).toContain('Pilih masa untuk meneruskan');
+  });
+
+  it('keeps the chosen time visible and offers Continue only for an available slot', async () => {
+    const selected = await (await get(`/b/seido?service=${service}&date=2026-10-06&start=${encodeURIComponent(TEN)}&lang=en`)).text();
+    expect(selected).toContain('class="card time-card" aria-current="true"');
+    expect(selected).toContain('Selected time');
+    expect(selected).toContain('Continue');
+    expect(selected).toContain(`/b/seido/request?service=${service}`);
+
+    const unavailable = await (await get(`/b/seido?service=${service}&date=2026-10-06&start=${encodeURIComponent('2026-10-06T02:30:00.000Z')}&lang=en`)).text();
+    expect(unavailable).not.toContain('class="selection-action"');
+    expect(unavailable).toContain('Select a time to continue');
   });
 
   it('verifies a customer, reschedules atomically, and then cancels the new request', async () => {

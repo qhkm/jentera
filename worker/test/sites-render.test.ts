@@ -32,8 +32,9 @@ describe('pages', () => {
   it('keeps the selected Malaysian date when returning from the details step', () => {
     const html = formPage({ ...base, service, startsAt: new Date('2026-10-06T17:00:00Z'), remaining: 2, submissionKey: 'k',
       values: { name: '', phone: '', note: '', party: '1' }, errors: [], siteKey: undefined });
-    expect(html).toContain(`href="/b/seido?service=${service.id}&amp;date=2026-10-07&amp;lang=en"`);
-    expect(html).toContain('aria-current="step"><span>3</span>Your details');
+    expect(html).toContain(`href="/b/seido?service=${service.id}&amp;date=2026-10-07&amp;start=2026-10-06T17%3A00%3A00.000Z&amp;lang=en"`);
+    expect(html).toContain('aria-current="step"><span>3</span>Details');
+    expect(html).toContain('<span>4</span>Confirm');
     expect(html).toContain('Malaysia time (GMT+8)');
     expect(html).toContain('Your booking is confirmed only after the business gets in touch.');
   });
@@ -63,7 +64,8 @@ describe('pages', () => {
   });
 
   it('lists times with places left, and says when a day has none', () => {
-    const html = timesPage({ ...base, service, selected: '2026-10-06', nextAvailable: null, notice: 'taken', days: [
+    const selectedStart = new Date('2026-10-06T02:00:00Z');
+    const html = timesPage({ ...base, service, selected: '2026-10-06', selectedStart, nextAvailable: null, notice: 'taken', days: [
       { date: '2026-10-06', slots: [{ startsAt: new Date('2026-10-06T02:00:00Z'), endsAt: new Date('2026-10-06T03:00:00Z'), remaining: 1 }] },
       { date: '2026-10-07', slots: [] },
     ] });
@@ -71,6 +73,10 @@ describe('pages', () => {
     expect(html).toContain('1 place left');
     expect(html).toContain('That time was just taken');
     expect(html).toContain('/b/seido/request?service=');
+    expect(html).toContain('class="card time-card" aria-current="true"');
+    expect(html).toContain('class="selection-action"');
+    expect(html).toContain('Continue');
+    expect(html).toContain('Selected service');
     expect(html).toContain('1 time');
     expect(html).toContain('aria-disabled="true"');
     const empty = timesPage({ ...base, service, selected: '2026-10-07', nextAvailable: '2026-10-09', notice: null, days: [{ date: '2026-10-07', slots: [] }] });
@@ -136,6 +142,7 @@ describe('pages', () => {
     expect(done).toContain('K7Q2MP');
     expect(done).toContain('will confirm on WhatsApp.');
     expect(done).toContain('/b/seido/manage?ref=K7Q2MP&amp;lang=en');
+    expect(done).toContain('aria-current="step"><span>4</span>Confirm');
     expect(messagePage({ ...base, kind: 'unavailable' })).toContain('Not taking bookings right now');
     expect(messagePage({ slug: null, lang: 'en', businessName: null, kind: 'not_found' })).toContain('Page not found');
     const unreadable = messagePage({ slug: null, lang: 'en', businessName: null, kind: 'bad_request' });
