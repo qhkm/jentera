@@ -6,7 +6,7 @@ import { createBookingRequest, findSubmission, parseRequestForm, submissionDiges
 import {
   beginCustomerSession, cancelByCustomer, loadManagedBooking, rescheduleByCustomer, validCustomerToken,
 } from '../apps/bookings/customer';
-import { isDate, myDate } from '../apps/bookings/time';
+import { addDays, isDate, myDate } from '../apps/bookings/time';
 import { clientIp } from '../ratelimit';
 import { turnstileIdempotencyKey, verifyTurnstile } from '../turnstile';
 import type { SitesEnv } from './env';
@@ -23,10 +23,6 @@ import {
    capitalising its first letter, still reaches the page. Names are stored
    lower-case, so a capital is answered with a redirect before any lookup. */
 const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/.*)?$/i;
-const DAYS_SHOWN = 7;
-/** At most today plus the longest allowed horizon. Only used when the first
-    seven days contain no opening, or an explicitly selected date is full. */
-const LOOKAHEAD_DAYS = 91;
 /** A booking form is a few hundred bytes; a body past this is not one. */
 const BODY_MAX = 8192;
 const FORM_TYPE = 'application/x-www-form-urlencoded';
@@ -158,6 +154,38 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     logoUrl: info.settings.logoVersion ? `/b/${slug}/logo?v=${encodeURIComponent(info.settings.logoVersion)}` : null,
   };
 
+  // Read one visible month. Search farther only when it has no openings.
+  // Navigation is bounded by the same Malaysian dates as the slot engine.
+  async function calendarTimes(serviceId: string, excludeBookingId?: string) {
+    const firstDate = myDate(now);
+    const lastDate = addDays(firstDate, info!.settings.horizonDays);
+    const asked = url.searchParams.get('date');
+    const askedMonth = `${url.searchParams.get('month') ?? ''}-01`;
+    const explicit = Boolean(asked && isDate(asked));
+    const monthNavigation = isDate(askedMonth);
+    const requested = explicit ? asked! : monthNavigation ? askedMonth : firstDate;
+    const bounded = requested < firstDate ? firstDate : requested > lastDate ? lastDate : requested;
+    const monthStart = `${bounded.slice(0, 7)}-01`;
+    const from = monthStart < firstDate ? firstDate : monthStart;
+    const monthEnd = addDays(monthStart, 31).slice(0, 7) + '-01';
+    const count = Math.min(Math.round((Date.parse(monthEnd) - Date.parse(from)) / 86_400_000),
+      Math.round((Date.parse(lastDate) - Date.parse(from)) / 86_400_000) + 1);
+    let times = await loadOpenTimes(env, businessId, serviceId, from, count, now, excludeBookingId);
+    if (!times) return null;
+    let selected = explicit ? bounded : times.days.find((day) => day.slots.length > 0)?.date ?? bounded;
+    let nextAvailable = times.days.find((day) => day.date > selected && day.slots.length > 0)?.date ?? null;
+    if (times.days.every((day) => day.slots.length === 0) && monthEnd <= lastDate) {
+      const remaining = Math.round((Date.parse(lastDate) - Date.parse(monthEnd)) / 86_400_000) + 1;
+      const horizon = await loadOpenTimes(env, businessId, serviceId, monthEnd, remaining, now, excludeBookingId);
+      nextAvailable = horizon?.days.find((day) => day.slots.length > 0)?.date ?? null;
+      if (horizon && nextAvailable && !explicit && !monthNavigation) {
+        selected = nextAvailable;
+        times = { ...horizon, days: horizon.days.filter((day) => day.date.slice(0, 7) === selected.slice(0, 7)) };
+      }
+    }
+    return { ...times, selected, nextAvailable, firstDate, lastDate };
+  }
+
   const manageMatch = sub.match(/^\/manage\/([A-Za-z0-9_-]{43})(?:\/(cancel|reschedule|calendar\.ics))?$/);
   const sameOriginPost = () => request.headers.get('Origin') === origin;
 
@@ -215,23 +243,11 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
         }
         return redirect(`/b/${slug}/manage/${token}?notice=rescheduled&lang=${lang}`, 303);
       }
-      const asked = url.searchParams.get('date');
-      const hasAskedDate = Boolean(asked && isDate(asked));
-      const from = hasAskedDate ? asked! : myDate(now);
-      let times = await loadOpenTimes(env, businessId, booking.serviceId, from, DAYS_SHOWN, now, booking.id);
+      const times = await calendarTimes(booking.serviceId, booking.id);
       if (!times) return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
-      let selected = hasAskedDate ? from : times.days.find((day) => day.slots.length > 0)?.date ?? from;
-      if (times.days.every((day) => day.slots.length === 0) && !hasAskedDate) {
-        const horizon = await loadOpenTimes(env, businessId, booking.serviceId, from, LOOKAHEAD_DAYS, now, booking.id);
-        const nextIndex = horizon?.days.findIndex((day) => day.slots.length > 0) ?? -1;
-        if (horizon && nextIndex >= 0) {
-          selected = horizon.days[nextIndex].date;
-          times = { ...horizon, days: horizon.days.slice(nextIndex, nextIndex + DAYS_SHOWN) };
-        }
-      }
       const selectedStart = url.searchParams.get('start');
       const parsedStart = selectedStart ? new Date(selectedStart) : null;
-      return page(reschedulePage({ ...base, token, booking, days: times.days, selected,
+      return page(reschedulePage({ ...base, token, booking, ...times,
         selectedStart: parsedStart && !Number.isNaN(parsedStart.getTime()) ? parsedStart : null,
         notice: url.searchParams.get('notice') === 'taken',
       }));
@@ -320,32 +336,14 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   if (!info.open) return unavailable(request.method === 'POST' ? 409 : 200);
 
   if (sub === '' && request.method === 'GET') {
-    const serviceId = url.searchParams.get('service');
+    const serviceId = url.searchParams.get('service') || (info.services.length === 1 ? info.services[0].id : null);
     if (!serviceId) return page(servicesPage({ ...base, services: info.services }));
-    const asked = url.searchParams.get('date');
-    const hasAskedDate = Boolean(asked && isDate(asked));
-    const from = hasAskedDate ? asked! : myDate(now);
-    let times = await loadOpenTimes(env, businessId, serviceId, from, DAYS_SHOWN, now);
+    const times = await calendarTimes(serviceId);
     if (!times) return redirect(`/b/${slug}?lang=${lang}`, 303);
-    let selected = hasAskedDate ? from : times.days.find((day) => day.slots.length > 0)?.date ?? from;
-    let nextAvailable = times.days.find((day) => day.date > selected && day.slots.length > 0)?.date ?? null;
-    if (times.days.every((day) => day.slots.length === 0)) {
-      const horizon = await loadOpenTimes(env, businessId, serviceId, from, LOOKAHEAD_DAYS, now);
-      if (!horizon) return redirect(`/b/${slug}?lang=${lang}`, 303);
-      const nextIndex = horizon.days.findIndex((day) => day.date > selected && day.slots.length > 0);
-      nextAvailable = nextIndex >= 0 ? horizon.days[nextIndex].date : null;
-      // On first arrival, take the customer straight to the earliest useful
-      // week. An explicit or bookmarked date stays selected and gets a link.
-      if (!hasAskedDate && nextIndex >= 0) {
-        selected = horizon.days[nextIndex].date;
-        times = { ...horizon, days: horizon.days.slice(nextIndex, nextIndex + DAYS_SHOWN) };
-        nextAvailable = null;
-      }
-    }
     const selectedStartValue = url.searchParams.get('start');
     const selectedStart = selectedStartValue ? new Date(selectedStartValue) : null;
     return page(timesPage({
-      ...base, service: times.service, days: times.days, selected, nextAvailable,
+      ...base, ...times, canChangeService: info.services.length > 1,
       selectedStart: selectedStart && !Number.isNaN(selectedStart.getTime()) ? selectedStart : null,
       notice: url.searchParams.get('notice') === 'taken' ? 'taken' : null,
     }));

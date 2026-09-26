@@ -90,6 +90,54 @@ const form = (over: Record<string, string> = {}) => ({
 });
 
 describe('sites: pages', () => {
+  it('opens a single service on the calendar while keeping welcome copy and multi-service selection', async () => {
+    await asOwner((sql) => sql`update booking_settings set welcome_title = 'Welcome <friend>', welcome_message = 'Let us plan.' where business_id = ${A}`);
+    const single = await (await get('/b/seido')).text();
+    expect(single).toContain('<h1>Select a date & time</h1>');
+    expect(single).toContain('Welcome &lt;friend&gt;');
+    expect(single).toContain('Let us plan.');
+    expect(single).not.toContain('>Change</a>');
+    await asOwner((sql) => sql`insert into booking_service (business_id, name, duration_minutes, capacity) values (${A}, 'Second service', 30, 1)`);
+    const multiple = await (await get('/b/seido')).text();
+    expect(multiple).toContain('class="card service-card"');
+    expect(multiple).toContain('Second service');
+    const chosen = await (await get(`/b/seido?service=${service}`)).text();
+    expect(chosen).toContain('>Change</a>');
+  });
+
+  it('navigates whole months within the booking horizon and preserves explicit empty dates', async () => {
+    const october = await (await get(`/b/seido?service=${service}`)).text();
+    expect(october).toContain('October 2026');
+    expect(october).toContain('month=2026-11');
+    expect(october).not.toContain('month=2026-09');
+    expect(october).toContain('date=2026-10-27');
+    const november = await (await get(`/b/seido?service=${service}&month=2026-11&lang=bm`)).text();
+    expect(november).toContain('November 2026');
+    expect(november).toContain('month=2026-10');
+    expect(november).not.toContain('month=2026-12');
+    expect(november).toContain('date=2026-11-03');
+    expect(november).not.toContain('date=2026-11-10');
+    const empty = await (await get(`/b/seido?service=${service}&date=2026-10-07`)).text();
+    expect(empty).toContain('No open times on this day.');
+    expect(empty).toMatch(/aria-label="Wed 7 Oct[^>]*aria-current="date"/);
+    expect(empty).toContain('date=2026-10-13');
+    const beyond = await (await get(`/b/seido?service=${service}&month=2099-12`)).text();
+    expect(beyond).toContain('November 2026');
+    expect(beyond).not.toContain('2099');
+  });
+
+  it('finds the next open month on arrival but keeps a deliberately selected closed month', async () => {
+    await asOwner((sql) => sql`insert into booking_block (business_id, label, starts_at, ends_at)
+      values (${A}, 'Closed in October', '2026-10-01T00:00:00+08:00', '2026-11-01T00:00:00+08:00')`);
+    const arrival = await (await get('/b/seido')).text();
+    expect(arrival).toContain('November 2026');
+    expect(arrival).toContain('10:00 am');
+    const chosenMonth = await (await get(`/b/seido?service=${service}&month=2026-10`)).text();
+    expect(chosenMonth).toContain('October 2026');
+    expect(chosenMonth).toContain('No open times on this day.');
+    expect(chosenMonth).toContain('date=2026-11-03');
+  });
+
   it('lists services with escaped names, the security headers and no cookie', async () => {
     const res = await get('/b/seido');
     expect(res.status).toBe(200);

@@ -46,12 +46,25 @@ describe('escaping and responses', () => {
 });
 
 describe('pages', () => {
+  it('renders leap days and month navigation across a year boundary', () => {
+    const leap = timesPage({ ...base, service, selected: '2028-02-29', firstDate: '2028-02-01', lastDate: '2028-03-10', notice: null,
+      days: [{ date: '2028-02-29', slots: [] }] });
+    expect(leap.match(/class="calendar-day"/g)).toHaveLength(29);
+    expect(leap).toContain('February 2028');
+    expect(leap).toContain('month=2028-03');
+    expect(leap).not.toContain('month=2028-01');
+    const january = timesPage({ ...base, service, selected: '2027-01-01', firstDate: '2026-12-15', lastDate: '2027-02-10', notice: null,
+      days: [{ date: '2027-01-01', slots: [] }] });
+    expect(january).toContain('month=2026-12');
+    expect(january).toContain('month=2027-02');
+    expect(january.match(/class="calendar-day"/g)).toHaveLength(31);
+  });
+
   it('keeps the selected Malaysian date when returning from the details step', () => {
     const html = formPage({ ...base, service, startsAt: new Date('2026-10-06T17:00:00Z'), remaining: 2, submissionKey: 'k',
       values: { name: '', phone: '', note: '', party: '1' }, errors: [], siteKey: undefined });
     expect(html).toContain(`href="/b/seido?service=${service.id}&amp;date=2026-10-07&amp;start=2026-10-06T17%3A00%3A00.000Z&amp;lang=en"`);
-    expect(html).toContain('aria-current="step"><span>3</span>Details');
-    expect(html).toContain('<span>4</span>Confirm');
+    expect(html).toContain('<h1>Your details</h1>');
     expect(html).toContain('Malaysia time (GMT+8)');
     expect(html).toContain('<span class="summary-label">Appointment</span>');
     expect(html).toContain('>Change time</a>');
@@ -126,7 +139,7 @@ describe('pages', () => {
     expect(html).toContain('class="card time-card" aria-current="true"');
     expect(html).toContain('class="selection-action"');
     expect(html).toContain('Continue');
-    expect(html).toContain('Selected service');
+    expect(html).toContain('class="service-context"');
     expect(html).toContain('1 time');
     expect(html).toContain('aria-disabled="true"');
     const empty = timesPage({ ...base, service, selected: '2026-10-07', nextAvailable: '2026-10-09', notice: null, days: [{ date: '2026-10-07', slots: [] }] });
@@ -193,7 +206,7 @@ describe('pages', () => {
     expect(done).toContain('K7Q2MP');
     expect(done).toContain('will confirm on WhatsApp.');
     expect(done).toContain('/b/seido/manage?ref=K7Q2MP&amp;lang=en');
-    expect(done).toContain('aria-current="step"><span>4</span>Confirm');
+    expect(done).toContain('<h1>Request received</h1>');
     expect(done).toContain('Keep this reference to manage or change your booking.');
     expect(done).toContain('class="receipt-primary"');
     expect(done).toContain('Book another appointment');
