@@ -416,7 +416,9 @@ consistent before any task began:
 - Usage is added from `run.completed`, `run.failed` and `run.cancelled`,
   and once more from a status read when a hand-off ends without one
   (abort, timeout, a lost stream) — credits count the specialist's usage
-  whatever the outcome.
+  whatever the outcome. (That one read came too early to see a stopped
+  run's usage; the fix wave below replaced it with a bounded settling
+  poll.)
 - No change was needed for two `ask_specialist` calls issued together:
   `ask_specialist` is outside Hermes's parallel-safe set, so they already
   run one after another, each still bounded by the task's own deadline.
