@@ -159,6 +159,44 @@ export async function sendMessage(
   return { messageId: body.result.message_id };
 }
 
+/** Telegram will not hand a bot a file larger than this. */
+export const TELEGRAM_FILE_MAX_BYTES = 20 * 1024 * 1024;
+
+export class TelegramFileTooLarge extends Error {}
+
+/** The bytes of a file the owner sent, for a bot whose token the worker holds.
+    A file URL is `…/file/bot<token>/<path>`: it is built here, used once and
+    never logged, and no error from here carries it. A vault-held bot cannot
+    use this; the vault has no file route yet. `getFile` is asked each time
+    because Telegram keeps a path valid for an hour only. */
+export async function downloadTelegramFile(
+  token: string,
+  fileId: string,
+  maxBytes = TELEGRAM_FILE_MAX_BYTES,
+): Promise<Uint8Array> {
+  const described = await fetch(`${API}/bot${token}/getFile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_id: fileId }),
+    signal: AbortSignal.timeout(15_000),
+  }).then((res) => res.json(), () => null).catch(() => null) as {
+    ok?: boolean;
+    result?: { file_path?: unknown; file_size?: unknown };
+  } | null;
+  const path = described?.ok ? described.result?.file_path : undefined;
+  if (typeof path !== 'string' || !/^[A-Za-z0-9_./-]{1,256}$/.test(path)) {
+    throw new Error('Telegram would not describe that file');
+  }
+  const size = Number(described?.result?.file_size ?? 0);
+  if (size > maxBytes) throw new TelegramFileTooLarge('that file is over the download limit');
+  const file = await fetch(`${API}/file/bot${token}/${path}`, { signal: AbortSignal.timeout(60_000) })
+    .catch(() => null);
+  if (!file?.ok) throw new Error('Telegram would not send that file');
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw new TelegramFileTooLarge('that file is over the download limit');
+  return bytes;
+}
+
 /** Persist the final answer as an ordinary Telegram message. Telegram's newer
     rich-message lane is useful for ephemeral streaming drafts, but some clients
     do not expose their normal copy controls. The durable answer must remain
