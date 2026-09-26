@@ -675,15 +675,18 @@ export function createRunner(input) {
 
       /* Called by the ask_specialist tool from Hermes on this machine. Hermes
          holds its own API key, not the runner key, so these answer before the
-         runner-key check and accept only the Hermes key. */
+         runner-key check and accept only the Hermes key — and only from this
+         machine, whatever the edge in front of the public Sprite URL does. */
       if (url.pathname === '/v1/handoff/available' && req.method === 'GET') {
-        if (!sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
+        if (!isLoopbackCaller(req) ||
+            !sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
           return json(res, 401, { ok: false, error: 'unauthorized' });
         }
         return json(res, 200, { ok: true, available: configChannel.handoffEnabled?.() === true });
       }
       if (url.pathname === '/v1/handoff' && req.method === 'POST') {
-        if (!sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
+        if (!isLoopbackCaller(req) ||
+            !sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
           return json(res, 401, { ok: false, error: 'unauthorized' });
         }
         let body;
@@ -1664,6 +1667,20 @@ function sameSecret(value, expected) {
   const a = Buffer.from(value);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+/** A request from a process on this machine, not one relayed to it. The
+ *  runner listens on every interface so the Sprite URL can reach it, and
+ *  that URL arrives through Fly's proxy; a relayed request carries Fly's
+ *  forwarding headers even when the proxy's own hop is local. The
+ *  ask_specialist tool calls http://127.0.0.1:8080 (JENTERA_RUNNER_URL is
+ *  set nowhere on a sprite, so the plugin's default holds). */
+export function isLoopbackCaller(req) {
+  return LOOPBACK_ADDRESSES.has(req.socket?.remoteAddress ?? '') &&
+    req.headers?.['fly-client-ip'] === undefined &&
+    req.headers?.['x-forwarded-for'] === undefined;
 }
 
 /** Pull the `Bearer …` token out of an Authorization header, or ''. */

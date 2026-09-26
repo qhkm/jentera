@@ -10,6 +10,7 @@ import {
   createRunner,
   configFromEnv,
   commandProgram,
+  isLoopbackCaller,
 } from '../src/server.mjs';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
@@ -1071,6 +1072,27 @@ test('hand-off routes answer only the Hermes key', async () => {
   const answer = await fetch(`${runnerOrigin}/v1/handoff/available`, { headers: { Authorization: `Bearer ${HERMES_KEY}` } });
   assert.deepEqual(await answer.json(), { ok: true, available: false });
   assert.equal((await fetch(`${runnerOrigin}/v1/handoff`, { method: 'POST', body: '{}' })).status, 401);
+});
+
+test('hand-off routes answer only a caller on this machine, never one relayed to it', async () => {
+  for (const relayed of [{ 'X-Forwarded-For': '203.0.113.9' }, { 'Fly-Client-IP': '203.0.113.9' }]) {
+    const available = await fetch(`${runnerOrigin}/v1/handoff/available`, {
+      headers: { Authorization: `Bearer ${HERMES_KEY}`, ...relayed } });
+    assert.equal(available.status, 401);
+    const asked = await fetch(`${runnerOrigin}/v1/handoff`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${HERMES_KEY}`, 'Content-Type': 'application/json', ...relayed },
+      body: JSON.stringify({ runId: 'run-1', specialist: 'records', brief: 'x' }),
+    });
+    assert.equal(asked.status, 401);
+  }
+  const socket = (remoteAddress) => ({ socket: { remoteAddress }, headers: {} });
+  assert.equal(isLoopbackCaller(socket('127.0.0.1')), true);
+  assert.equal(isLoopbackCaller(socket('::1')), true);
+  assert.equal(isLoopbackCaller(socket('::ffff:127.0.0.1')), true);
+  assert.equal(isLoopbackCaller(socket('172.16.0.2')), false);
+  assert.equal(isLoopbackCaller(socket('fdaa::3')), false);
+  assert.equal(isLoopbackCaller(socket(undefined)), false);
 });
 
 test('a specialist works inside the task that asked for it', async () => {
