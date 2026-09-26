@@ -69,11 +69,20 @@ export async function hearTelegramVoice(
     return { kind: 'answered' };
   }
   await say(voiceEcho(heard.text));
-  const caption = incoming.text.trim();
   return {
     kind: 'heard',
-    message: { ...message, incoming: { ...incoming, text: caption ? `${heard.text}\n\n${caption}` : heard.text } },
+    message: { ...message, incoming: { ...incoming, text: voiceRequest(heard.text, incoming.text) } },
   };
+}
+
+/** The request a voice note makes: the transcript, then the caption. A mode
+    command in the caption goes first, since that is the only place
+    `responseModeFor` looks; `withoutModeCommand` takes it off for the agent. */
+function voiceRequest(transcript: string, caption: string): string {
+  const command = /^\s*(\/(?:quick|deep|research))(?=\s|$)\s*/i.exec(caption);
+  const rest = (command ? caption.slice(command[0].length) : caption).trim();
+  const request = rest ? `${transcript}\n\n${rest}` : transcript;
+  return command ? `${command[1]} ${request}` : request;
 }
 
 /** What the agent is told about a transcript: the words may be misheard. */

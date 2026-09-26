@@ -95,6 +95,21 @@ describe('a Telegram voice note', () => {
     expect(await asOwner((sql) => sql`select id from run where business_id = ${A}`)).toHaveLength(0);
   });
 
+  /* Review 26 Sep: the caption was appended after the transcript, so a /deep
+     caption never reached responseModeFor, which reads only the start. */
+  it.each([
+    ['/deep', 'Semak semua invois bulan ini.'],
+    ['/deep untuk laporan penuh', 'Semak semua invois bulan ini.\n\nuntuk laporan penuh'],
+  ])('lets a %j caption choose deep mode', async (caption, agentText) => {
+    const { env, provider, intake } = await setup('Semak semua invois bulan ini.');
+    await handleRuntimeQueueMessage(env, intake(13, caption), { provider });
+    const [task] = await asOwner((sql) => sql<{ mode: string; input: string }[]>`
+      select t.payload->>'responseMode' as mode, t.payload->>'input' as input
+        from runtime_task t join run r on r.id = t.run_id where r.business_id = ${A} and t.kind = 'run'`);
+    expect(task.mode).toBe('deep');
+    expect(task.input.startsWith(agentText)).toBe(true);
+  });
+
   it('asks the owner to type a note it could not make out, and starts no run', async () => {
     const { env, provider, intake } = await setup('Thank you.');
     await expect(handleRuntimeQueueMessage(env, intake(8), { provider }))
