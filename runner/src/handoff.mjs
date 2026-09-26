@@ -252,10 +252,12 @@ export class HandoffEngine {
     const onAbort = () => { void stopOnce(); };
     signal.addEventListener('abort', onAbort, { once: true });
     mark('started');
-    /* A stop that landed between the start and this line would otherwise
-       leave nothing listening for it, since the listener above only reacts
-       to what happens next. */
-    if (task.stopped) own.abort();
+    /* A stop that landed while the start's own POST was in flight leaves the
+       combined signal already aborted the moment it is built above: an
+       'abort' listener added to an already-aborted signal never fires, and
+       aborting `own` now would not either, since nothing transitions.
+       Sending the stop directly is the only way this run still gets one. */
+    if (signal.aborted) void stopOnce();
     const timer = setTimeout(() => own.abort(), budgetMs);
     try {
       const outcome = await this.follow(task.taskId, runId, key, signal);

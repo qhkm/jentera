@@ -361,3 +361,60 @@ test("a rejected turn does not poison the caller's queue", async () => {
   const result = await handoffs.request(ask('records', 'second'));
   assert.equal(result.ok, true);
 });
+
+test('a stop that lands while the start POST is still in flight still stops that specialist', async () => {
+  const { handoffs, fake } = engine(() => done('ok'));
+  let releaseStart;
+  const held = new Promise((resolve) => { releaseStart = resolve; });
+  const realHermes = fake.hermes.bind(fake);
+  fake.hermes = async (path, init, profile) => {
+    if (path === '/v1/runs' && init?.method === 'POST' && profile === 'records') await held;
+    return realHermes(path, init, profile);
+  };
+
+  const pending = handoffs.request(ask('records', 'Reconcile'));
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  await handoffs.stopTask('task-1');
+  releaseStart();
+
+  const result = await pending;
+  assert.equal(result.code, 'stopped');
+  assert.ok(fake.calls.some((call) => call.path === '/v1/runs/run_records_1/stop' && call.profile === 'records'));
+});
+
+test("a caller's own timeout that lands while its specialist's start POST is still in flight still stops that specialist", async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const { handoffs, fake } = engine(() => []);
+  handoffs.register('task-1', {
+    rootRunId: 'run_root', deadlineAt: NOW + 160_000, model: 'deep-model', handoff: LIMITS,
+  });
+  fake.events = async (runId, profile, signal) => {
+    if (profile === 'records') void handoffs.request(ask('growth', 'Last month sales?', runId));
+    return hangingEvents(signal);
+  };
+  let releaseGrowthStart;
+  const held = new Promise((resolve) => { releaseGrowthStart = resolve; });
+  const realHermes = fake.hermes.bind(fake);
+  fake.hermes = async (path, init, profile) => {
+    if (path === '/v1/runs' && init?.method === 'POST' && profile === 'growth') await held;
+    return realHermes(path, init, profile);
+  };
+
+  const pending = handoffs.request(ask('records', 'Reconcile'));
+  await flush();
+  await flush();
+
+  /* growth's start POST is now held mid-flight; fire records' own 100_000ms
+     budget timer while it waits, then let it through. */
+  t.mock.timers.tick(100_000);
+  await flush();
+  releaseGrowthStart();
+  await flush();
+  await flush();
+
+  const result = await pending;
+  assert.equal(result.code, 'time');
+  assert.ok(fake.calls.some((call) => call.path === '/v1/runs/run_growth_2/stop' && call.profile === 'growth'));
+});
