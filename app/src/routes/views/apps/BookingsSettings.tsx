@@ -4,7 +4,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { useBusiness } from '@/hooks/useBusiness';
 import { AppsError } from '@/lib/apps/api';
 import { useSaveBookingsConfig } from '@/lib/apps/queries';
-import type { AppsApi, BookingService, BookingsConfig, BookingsConfigInput, WeeklyHours } from '@/lib/apps/types';
+import type { AppsApi, BookingPageTheme, BookingService, BookingsConfig, BookingsConfigInput, WeeklyHours } from '@/lib/apps/types';
 
 /* Monday first, as a Malaysian week reads; 0 is Sunday in the data. */
 const WEEK = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -117,6 +117,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const [horizon, setHorizon] = useState(config.settings?.horizonDays ?? 30);
   const [location, setLocation] = useState(config.settings?.location ?? '');
   const [brandColor, setBrandColor] = useState(config.settings?.brandColor ?? '#4aebb5');
+  const [pageTheme, setPageTheme] = useState<BookingPageTheme>(config.settings?.pageTheme ?? 'dark');
   const [blocks, setBlocks] = useState<BlockDraft[]>(() => config.blocks.map((block) => ({
     key: block.id, id: block.id, label: block.label, startsAt: malaysiaInput(block.startsAt), endsAt: malaysiaInput(block.endsAt),
   })));
@@ -199,6 +200,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       horizonDays: horizon,
       location: location.trim() || null,
       brandColor: brandColor.toLowerCase(),
+      pageTheme,
       acknowledgeAvailabilityLimits: installed || acknowledged,
       services: services.map((service) => ({
         id: service.id,
@@ -403,6 +405,15 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
           <small>{t(installed ? 'bookings.settings.logo.help' : 'bookings.settings.logo.publishFirst')}</small>
         </div>
       </div>
+      <fieldset className="bookings-theme-field">
+        <legend>{t('bookings.settings.pageTheme')}</legend>
+        <div className="bookings-theme-options" role="group" aria-label={t('bookings.settings.pageTheme')}>
+          {(['dark', 'light'] as const).map((theme) => <button key={theme} type="button"
+            className={pageTheme === theme ? 'active' : ''} aria-pressed={pageTheme === theme}
+            onClick={() => setPageTheme(theme)}>{t(`bookings.settings.pageTheme.${theme}`)}</button>)}
+        </div>
+        <small>{t('bookings.settings.pageTheme.help')}</small>
+      </fieldset>
       <fieldset className="bookings-color-field">
         <legend>{t('bookings.settings.brandColor')}</legend>
         <div className="bookings-color-options">
@@ -436,7 +447,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         <div><strong>{t('bookings.settings.preview.title')}</strong><span>{t('bookings.settings.preview.help')}</span></div>
         <small>{t('bookings.settings.preview.live')}</small>
       </header>
-      <div className="bookings-preview-frame">
+      <div className={`bookings-preview-frame is-${pageTheme}`}>
         <div className="bookings-preview-business">
           <div className="bookings-preview-logo">
             {config.settings?.logoUrl

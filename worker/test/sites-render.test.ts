@@ -62,6 +62,7 @@ describe('pages', () => {
 
   it('renders business and service names as text, never markup', () => {
     const html = servicesPage({ ...base, services: [service] });
+    expect(html).toContain('<html lang="en" data-theme="dark">');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('SEIDO &lt;script&gt;');
     expect(html).toContain('Cupping &lt;b&gt;class&lt;/b&gt;');
@@ -84,6 +85,12 @@ describe('pages', () => {
     expect(unsafe).not.toContain('</style><script>');
   });
 
+  it('applies the owner-selected light appearance to the whole page', () => {
+    const html = servicesPage({ ...base, pageTheme: 'light', services: [service] });
+    expect(html).toContain('<html lang="en" data-theme="light">');
+    expect(html).toContain(':root[data-theme="light"]{color-scheme:light');
+  });
+
   it('uses an honest location fallback when the owner has not added one', () => {
     expect(servicesPage({ ...base, location: null, services: [service] })).toContain('Confirmed on WhatsApp');
     expect(servicesPage({ ...base, lang: 'bm', location: null, services: [service] })).toContain('Disahkan melalui WhatsApp');
@@ -91,7 +98,7 @@ describe('pages', () => {
 
   it('switches language and marks Malay pages as ms', () => {
     const html = servicesPage({ ...base, lang: 'bm', services: [service] });
-    expect(html).toContain('<html lang="ms">');
+    expect(html).toContain('<html lang="ms" data-theme="dark">');
     expect(html).toContain('Pilih perkhidmatan');
     expect(html).toContain('href="/b/seido?lang=en"');
     expect(html).toContain('Dikuasakan oleh Jentera');

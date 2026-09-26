@@ -169,7 +169,7 @@ describe('sites: pages', () => {
 
   it('shows open times and keeps the language through the steps', async () => {
     const html = await (await get(`/b/seido?service=${service}&date=2026-10-06&lang=bm`)).text();
-    expect(html).toContain('<html lang="ms">');
+    expect(html).toContain('<html lang="ms" data-theme="dark">');
     expect(html).toContain('10.00 pagi');
     expect(html).toContain('lang=bm');
     expect(html).toContain('Pilih masa untuk meneruskan');

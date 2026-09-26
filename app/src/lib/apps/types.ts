@@ -113,6 +113,7 @@ export interface BookingsConfig {
     horizonDays: number;
     location: string | null;
     brandColor: string;
+    pageTheme: BookingPageTheme;
     logoUrl: string | null;
     availabilityAcknowledgedAt: string;
   } | null;
@@ -120,6 +121,8 @@ export interface BookingsConfig {
   blocks: BookingBlock[];
   calendarProtection: { connected: boolean; account: string | null; syncedAt: string | null; lastError: string | null };
 }
+
+export type BookingPageTheme = 'dark' | 'light';
 
 export interface BookingServiceInput extends Omit<BookingService, 'id'> {
   /** null for a service not saved yet. */
@@ -135,6 +138,7 @@ export interface BookingsConfigInput {
   horizonDays: number;
   location: string | null;
   brandColor: string;
+  pageTheme: BookingPageTheme;
   acknowledgeAvailabilityLimits: boolean;
   services: BookingServiceInput[];
   blocks: Array<{ id: string | null; label: string; startsAt: string; endsAt: string }>;

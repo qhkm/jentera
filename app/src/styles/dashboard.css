@@ -903,6 +903,12 @@
 .bookings-logo-actions .btn.disabled { opacity: .5; cursor: not-allowed; }
 .bookings-logo-actions input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .bookings-logo-actions small { flex-basis: 100%; color: var(--text-secondary); }
+.bookings-theme-field { display: grid; gap: 9px; padding: 0; border: 0; }
+.bookings-theme-field legend { margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+.bookings-theme-field small { color: var(--text-secondary); }
+.bookings-theme-options { width: fit-content; display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.bookings-theme-options button { min-width: 78px; margin: 0; padding: 7px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.bookings-theme-options button.active { background: var(--bg-card); color: var(--text); box-shadow: 0 0 0 1px var(--border); font-weight: 650; }
 .bookings-color-field { display: grid; gap: 10px; padding: 0; border: 0; }
 .bookings-color-field legend { margin-bottom: 8px; font-size: 13px; font-weight: 600; }
 .bookings-color-options { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -939,6 +945,17 @@
 .bookings-preview-services small { overflow: hidden; color: #aaa; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .bookings-preview-services b { color: var(--booking-preview-accent); font-size: 11px; }
 .bookings-preview-services .bookings-preview-empty { justify-content: center; color: #aaa; font-size: 9px; text-align: center; }
+.bookings-preview-frame.is-light { border-color: rgb(18 72 54 / .14); background: #f7faf8; color: #17231f; box-shadow: none; }
+.bookings-preview-frame.is-light .bookings-preview-business span,
+.bookings-preview-frame.is-light .bookings-preview-content > p,
+.bookings-preview-frame.is-light .bookings-preview-services small,
+.bookings-preview-frame.is-light .bookings-preview-services .bookings-preview-empty { color: #64736e; }
+.bookings-preview-frame.is-light .bookings-preview-logo { border-color: rgb(18 72 54 / .14); background: #fff; }
+.bookings-preview-frame.is-light .bookings-preview-progress i { background: rgb(18 72 54 / .14); }
+.bookings-preview-frame.is-light .bookings-preview-progress i:first-child { background: var(--booking-preview-accent); }
+.bookings-preview-frame.is-light .bookings-preview-content { border-color: rgb(18 72 54 / .14); background: #fff; }
+.bookings-preview-frame.is-light .bookings-preview-content h5 { color: #17231f; }
+.bookings-preview-frame.is-light .bookings-preview-services > div { border-color: rgb(18 72 54 / .14); background: #f7faf8; }
 @container (max-width: 700px) {
   .bookings-page-editor { grid-template-columns: 1fr; }
   .bookings-live-preview { position: static; grid-row: 1; max-width: 360px; }

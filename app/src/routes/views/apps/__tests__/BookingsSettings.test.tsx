@@ -43,7 +43,7 @@ describe('BookingsSettings', () => {
     await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
     await user.click(screen.getByRole('button', { name: 'Publish booking page' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith({
-      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5',
+      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark',
       acknowledgeAvailabilityLimits: true,
       services: [{ id: null, name: 'Cupping class', description: null, durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
         hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '17:00' })) }],
@@ -78,12 +78,14 @@ describe('BookingsSettings', () => {
     expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Cupping class');
     await user.click(screen.getByRole('button', { name: '#62a8ff' }));
     expect(screen.getByLabelText('Customer preview')).toHaveStyle({ '--booking-preview-accent': '#62a8ff' });
+    await user.click(screen.getByRole('button', { name: 'Light' }));
+    expect(screen.getByLabelText('Customer preview').querySelector('.bookings-preview-frame')).toHaveClass('is-light');
     const logo = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'logo.png', { type: 'image/png' });
     await user.upload(screen.getByLabelText('Add logo'), logo);
     expect(api.uploadBookingsLogo).toHaveBeenCalledWith(logo);
     expect(onSaved).toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
-    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ brandColor: '#62a8ff' }));
+    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ brandColor: '#62a8ff', pageTheme: 'light' }));
   });
 
   it('saves the customer change deadline and explains reminder delivery accurately', async () => {

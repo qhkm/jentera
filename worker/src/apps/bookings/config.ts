@@ -16,6 +16,7 @@ const UNIQUE_VIOLATION = '23505';
 
 export interface HoursInput { weekday: number; opens: string; closes: string }
 export interface BlockInput { id: string | null; label: string; startsAt: Date; endsAt: Date }
+export type BookingPageTheme = 'dark' | 'light';
 export interface ServiceInput {
   id: string | null;
   name: string;
@@ -35,6 +36,7 @@ export interface ConfigInput {
   horizonDays: number;
   location: string | null;
   brandColor: string;
+  pageTheme: BookingPageTheme;
   acknowledgeAvailabilityLimits: boolean;
   services: ServiceInput[];
   blocks: BlockInput[];
@@ -44,7 +46,7 @@ export interface BlockView { id: string; label: string; startsAt: string; endsAt
 export interface ConfigView {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; changeCutoffMinutes: number; horizonDays: number; location: string | null; brandColor: string; logoUrl: string | null; availabilityAcknowledgedAt: string } | null;
+  settings: { accepting: boolean; minNoticeMinutes: number; changeCutoffMinutes: number; horizonDays: number; location: string | null; brandColor: string; pageTheme: BookingPageTheme; logoUrl: string | null; availabilityAcknowledgedAt: string } | null;
   services: ServiceView[];
   blocks: BlockView[];
   calendarProtection: { connected: boolean; account: string | null; syncedAt: string | null; lastError: string | null };
@@ -180,6 +182,9 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   const brandColor = raw.brandColor === undefined ? '#4aebb5'
     : typeof raw.brandColor === 'string' && BRAND_COLOR.test(raw.brandColor) ? raw.brandColor.toLowerCase() : null;
   if (!brandColor) return fail('brand color must be a six-digit hex color');
+  const pageTheme = raw.pageTheme === undefined ? 'dark'
+    : raw.pageTheme === 'dark' || raw.pageTheme === 'light' ? raw.pageTheme : null;
+  if (!pageTheme) return fail('page theme must be dark or light');
   if (!Array.isArray(raw.services) || raw.services.length < 1 || raw.services.length > MAX_SERVICES) {
     return fail(`add between 1 and ${MAX_SERVICES} services`);
   }
@@ -197,7 +202,7 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   return {
     ok: true,
     value: {
-      version, slug, accepting: raw.accepting, minNoticeMinutes, changeCutoffMinutes, horizonDays, location: location.value, brandColor,
+      version, slug, accepting: raw.accepting, minNoticeMinutes, changeCutoffMinutes, horizonDays, location: location.value, brandColor, pageTheme,
       acknowledgeAvailabilityLimits: raw.acknowledgeAvailabilityLimits === true, services, blocks: blocks.value,
     },
   };
@@ -211,8 +216,8 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
     installation: null, version: null, settings: null, services: [], blocks: [],
     calendarProtection: { connected: false, account: null, syncedAt: null, lastError: null },
   };
-  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; change_cutoff_minutes: number; horizon_days: number; location: string | null; brand_color: string; logo_key: string | null; logo_updated_at: Date | null; availability_acknowledged_at: Date }[]>`
-    select accepting, min_notice_minutes, change_cutoff_minutes, horizon_days, location, brand_color, logo_key, logo_updated_at, availability_acknowledged_at
+  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; change_cutoff_minutes: number; horizon_days: number; location: string | null; brand_color: string; page_theme: BookingPageTheme; logo_key: string | null; logo_updated_at: Date | null; availability_acknowledged_at: Date }[]>`
+    select accepting, min_notice_minutes, change_cutoff_minutes, horizon_days, location, brand_color, page_theme, logo_key, logo_updated_at, availability_acknowledged_at
       from booking_settings where business_id = ${businessId}`;
   const services = await tx<{ id: string; name: string; description: string | null; duration_minutes: number; capacity: number; price_label: string | null; active: boolean }[]>`
     select id, name, description, duration_minutes, capacity, price_label, active from booking_service
@@ -241,6 +246,7 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
       horizonDays: settings.horizon_days,
       location: settings.location,
       brandColor: settings.brand_color,
+      pageTheme: settings.page_theme,
       logoUrl: settings.logo_key
         ? `${publicBookingUrl(sitesOrigin, installation.public_slug)}/logo?v=${encodeURIComponent(settings.logo_updated_at?.toISOString() ?? '')}`
         : null,
@@ -302,8 +308,8 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     // Lost a race with a concurrent first save: the client must reload.
     if (inserted.length === 0) throw new ConfigError('CONFIG_CHANGED');
     await tx`insert into booking_settings
-      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, brand_color, updated_at)
-      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${input.brandColor}, ${now})`;
+      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, brand_color, page_theme, updated_at)
+      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${input.brandColor}, ${input.pageTheme}, ${now})`;
   } else {
     if (input.version !== existing.config_version) throw new ConfigError('CONFIG_CHANGED');
     if (input.slug !== existing.public_slug) {
@@ -314,13 +320,13 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     const updated = await tx`update booking_settings
       set accepting = ${input.accepting}, min_notice_minutes = ${input.minNoticeMinutes},
           change_cutoff_minutes = ${input.changeCutoffMinutes}, horizon_days = ${input.horizonDays}, location = ${input.location},
-          brand_color = ${input.brandColor}, updated_at = ${now}
+          brand_color = ${input.brandColor}, page_theme = ${input.pageTheme}, updated_at = ${now}
       where business_id = ${businessId} returning business_id`;
     if (updated.length === 0) {
       if (!input.acknowledgeAvailabilityLimits) throw new ConfigError('ACK_REQUIRED');
       await tx`insert into booking_settings
-        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, brand_color, updated_at)
-        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${input.brandColor}, ${now})`;
+        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, brand_color, page_theme, updated_at)
+        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${input.brandColor}, ${input.pageTheme}, ${now})`;
     }
     await tx`update app_installation set config_version = config_version + 1, updated_at = ${now}
       where business_id = ${businessId} and app_key = 'bookings'`;
