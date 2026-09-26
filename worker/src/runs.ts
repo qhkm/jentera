@@ -49,6 +49,7 @@ export const EVENTS = [
      showed for it, kept so the receipt can be rebuilt after a reload. */
   'agent.tool',
   'agent.delegation',
+  'agent.handoff',
   /* One of the agent's own `@step:` lines, as shown. Narration, not proof
      of anything: `runSteps` reads these back for the chat's receipt. */
   'agent.step',

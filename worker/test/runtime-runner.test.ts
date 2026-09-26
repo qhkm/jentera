@@ -1693,6 +1693,99 @@ describe('live progress to the web chat', () => {
   });
 });
 
+describe('specialists handing off', () => {
+  it('names the specialist on its steps and records each hand-off stage', async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `live:${run.id}`,
+      payload: {
+        input: 'Are we open on Sunday?', model: 'MiniMax-M3', responseMode: 'deep',
+        objective: 'Are we open on Sunday?', function: 'ask', channel: 'app',
+      },
+    }));
+    const events = [
+      { type: 'tool.started', tool: 'ask_specialist', seq: 1 },
+      { type: 'handoff', stage: 'requested', specialist: 'records', name: 'Finance and records', depth: 1, seq: 2 },
+      { type: 'handoff', stage: 'started', specialist: 'records', name: 'Finance and records', depth: 1, seq: 3 },
+      { type: 'tool.started', tool: 'business_records', preview: 'invoices', agent: 'records', seq: 4 },
+      { type: 'tool.completed', tool: 'business_records', duration: 1, error: false, agent: 'records', seq: 5 },
+      { type: 'handoff', stage: 'finished', specialist: 'records', name: 'Finance and records', depth: 1, seq: 6 },
+      { type: 'handoff', stage: 'refused', specialist: 'growth', name: 'Growth and marketing', depth: 1, code: 'limit_count', seq: 7 },
+      { type: 'tool.completed', tool: 'ask_specialist', duration: 30, error: false, seq: 8 },
+    ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'live-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const signal = init?.signal;
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(events));
+            signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+          },
+        }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: runnerFetch, observationSliceMs: 600 },
+    );
+    const trace = await asTenant(A, (tx) => runTrace(tx, run.id));
+    expect(trace.filter((event) => event.type === 'agent.handoff').map((event) => event.payload)).toEqual([
+      { stage: 'requested', specialist: 'records', depth: 1 },
+      { stage: 'started', specialist: 'records', depth: 1 },
+      { stage: 'finished', specialist: 'records', depth: 1 },
+      { stage: 'refused', specialist: 'growth', depth: 1, code: 'limit_count' },
+    ]);
+    expect(trace).toContainEqual(expect.objectContaining({
+      type: 'agent.tool',
+      payload: {
+        tool: 'business_records',
+        detail: '⟦Finance and records⟧ ⚙️ business_records: "invoices"',
+        agent: 'records',
+      },
+    }));
+    const statuses = published.filter((event) => event.type === 'status');
+    expect(statuses).toContainEqual(expect.objectContaining({ detail: '🤝 Asking Finance and records…', kind: 'stage' }));
+    expect(statuses).toContainEqual(expect.objectContaining({
+      detail: '⟦Finance and records⟧ ⚙️ business_records: "invoices"', kind: 'tool' }));
+    expect(JSON.stringify(trace)).not.toMatch(/brief/);
+  });
+});
+
 describe('conversation versus work', () => {
   /* Every web message became a "task": a run, a work record and a card in
      the chat and in Activity. A quick reply the agent answered from

@@ -17,6 +17,7 @@ import {
   type RunnerApprovalRequest,
   type RunnerTaskResponse,
   type RunnerToolEvent,
+  type RunnerHandoffEvent,
 } from './runner-client';
 import { recordRuntimeTaskRemoteRun, type RuntimeTask } from './tasks';
 import { issueFullToolsGrant } from './tool-grant';
@@ -128,6 +129,7 @@ export async function dispatchRuntimeRun(
     fetch?: typeof globalThis.fetch;
     onDelta?: (delta: string) => Promise<void>;
     onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
+    onHandoff?: (event: RunnerHandoffEvent) => Promise<void>;
     /** The real Hermes model-call iteration and configured ceiling. */
     onIteration?: (current: number, total: number) => Promise<void>;
     onHeartbeat?: () => Promise<void>;
@@ -339,6 +341,7 @@ export async function dispatchRuntimeRun(
     ? client.stream(task.id, {
         onDelta: options.onDelta,
         onToolEvent: options.onToolEvent,
+        onHandoff: options.onHandoff,
         onIteration: options.onIteration,
         onHeartbeat: options.onHeartbeat,
         onProgress: options.onProgress,

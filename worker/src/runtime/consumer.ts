@@ -111,7 +111,7 @@ import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '..
 import { modelForResponseMode, responseModeFor, withoutModeCommand } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
-import { handoffEnabledFor, handoffTaskField } from '../handoff';
+import { handoffEnabledFor, handoffTaskField, agentStep, handoffStatus, recordHandoff, specialistNames } from '../handoff';
 import { recordDelegation } from '../coordination';
 import {
   notifyOwnersApprovalRequested,
@@ -157,6 +157,22 @@ async function recordStartDelay(
        limit 1`;
     if (!seen) await append(tx, businessId, runId, 'work.delayed', { reason });
   }).catch(() => undefined);
+}
+
+/* A specialist's display name: from the runner's hand-off events, or — when a
+   later slice starts past them — from the business's own roster. */
+async function specialistName(
+  env: Env,
+  businessId: string,
+  cache: Map<string, string>,
+  profile: string,
+): Promise<string> {
+  const known = cache.get(profile);
+  if (known) return known;
+  const names = await withTenant(env, businessId, (tx) => specialistNames(tx))
+    .catch(() => new Map<string, string>());
+  for (const [key, value] of names) cache.set(key, value);
+  return cache.get(profile) ?? profile;
 }
 
 const MAX_TASK_ATTEMPTS = 5;
@@ -1506,6 +1522,7 @@ export async function handleRuntimeMessage(
         const web = lease.task.runId
           ? createWebProgress(env, message.businessId, lease.task.runId)
           : null;
+        const agentNames = new Map<string, string>();
         /* Typing is cosmetic and the webhook already emitted an immediate
            pulse. Refresh it in parallel so Telegram cannot hold model start
            behind another network round trip. */
@@ -1586,6 +1603,25 @@ export async function handleRuntimeMessage(
                   await liveStream?.push(text);
                 })
               : undefined,
+            onHandoff: (liveStream || web)
+              ? async (event) => {
+                  if (event.name) agentNames.set(event.specialist, event.name);
+                  const name = event.name ?? await specialistName(env, message.businessId, agentNames, event.specialist);
+                  if (lease.task.runId) {
+                    const handoffRunId = lease.task.runId;
+                    await withTenant(env, message.businessId, (tx) =>
+                      recordHandoff(tx, message.businessId, handoffRunId, event)).catch(() => undefined);
+                  }
+                  const line = handoffStatus(event.stage, name);
+                  if (!line) return;
+                  await web?.status(line, 'stage');
+                  if (liveStream && !firstVisibleDelta) {
+                    currentStep = line;
+                    currentStepIsTool = false;
+                    await liveStream.setStatus(timedStatus());
+                  }
+                }
+              : undefined,
             onToolEvent: (liveStream || web)
               ? async (event) => {
                   if (event.type !== 'tool.started' && event.type !== 'tool.completed') {
@@ -1600,24 +1636,33 @@ export async function handleRuntimeMessage(
                   if (event.type === 'tool.started') {
                     answerGate.toolStarted();
                     currentActivity = statusLine(event.tool).replace(/_/g, ' ');
-                    const toolLine = hermesToolLine(event.tool, event.preview);
+                    const agentName = event.agent
+                      ? await specialistName(env, message.businessId, agentNames, event.agent)
+                      : null;
+                    const toolLine = agentName
+                      ? agentStep(agentName, hermesToolLine(event.tool, event.preview))
+                      : hermesToolLine(event.tool, event.preview);
                     /* On the durable trace, so completion (maybe a later
                        slice) can tell work from conversation, and so the
                        chat's receipt can be rebuilt after a reload. */
                     if (lease.task.runId) {
                       const toolRunId = lease.task.runId;
                       await withTenant(env, message.businessId, (tx) =>
-                        append(tx, message.businessId, toolRunId, 'agent.tool', { tool: event.tool, detail: toolLine }))
+                        append(tx, message.businessId, toolRunId, 'agent.tool', {
+                          tool: event.tool, detail: toolLine, ...(event.agent ? { agent: event.agent } : {}),
+                        }))
                         .catch(() => undefined);
                     }
                     await web?.status(toolLine, 'tool');
-                    if (liveStream) {
+                    if (liveStream && !event.agent) {
                       await liveStream.showTool(event.tool, event.preview);
                     }
                     /* Mirror the tool into the working bubble while no answer
                        text exists yet, so the bubble itself stays alive. */
                     if (!currentStep && !firstVisibleDelta) {
-                      currentStep = liveStream ? telegramToolProgress(event.tool) : toolLine;
+                      currentStep = liveStream
+                        ? (agentName ? `🤝 ${agentName} is working on their part…` : telegramToolProgress(event.tool))
+                        : toolLine;
                       currentStepIsTool = true;
                       await liveStream?.setStatus(timedStatus());
                     }

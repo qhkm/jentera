@@ -344,6 +344,7 @@ export class RunnerClient {
     handlers: {
       onDelta: (delta: string) => Promise<void>;
       onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
+      onHandoff?: (event: RunnerHandoffEvent) => Promise<void>;
       /** The real Hermes model-call iteration and configured ceiling. */
       onIteration?: (current: number, total: number) => Promise<void>;
       onHeartbeat?: () => Promise<void>;
@@ -412,6 +413,12 @@ export class RunnerClient {
             received += event.requestId.length + event.tool.length + event.message.length;
             if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
             return event;
+          }
+          if (event.type === 'handoff') {
+            received += event.specialist.length + (event.name?.length ?? 0);
+            if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
+            await handlers.onHandoff?.(event);
+            continue;
           }
           if (event.type === 'tool.started' || event.type === 'tool.completed') {
             received += event.tool.length + ('preview' in event ? event.preview?.length ?? 0 : 0);
@@ -540,18 +547,41 @@ type SafeStreamEvent = (
   | RunnerApprovalRequest
   | { type: 'heartbeat' }
   | { type: 'done' }
+  | RunnerHandoffEvent
 ) & { seq?: number };
 
 export type RunnerToolEvent =
   (| { type: 'tool.started'; tool: string; preview?: string }
-  | { type: 'tool.completed'; tool: string; duration: number; error: boolean }) & { seq?: number };
+  | { type: 'tool.completed'; tool: string; duration: number; error: boolean }) & { seq?: number; agent?: string };
 
 export interface RunnerApprovalRequest {
   type: 'approval';
   requestId: string;
   tool: string;
   message: string;
+  agent?: string;
 }
+
+export type HandoffStage = 'requested' | 'started' | 'finished' | 'failed' | 'refused';
+export const HANDOFF_CODES = [
+  'unavailable', 'unknown_specialist', 'loop', 'limit_depth', 'limit_count', 'time', 'budget', 'failed', 'stopped',
+] as const;
+export type HandoffCode = (typeof HANDOFF_CODES)[number];
+
+/** A specialist hand-off stage (docs/plans/2026-09-26-specialist-handoff.md). */
+export interface RunnerHandoffEvent {
+  type: 'handoff';
+  stage: HandoffStage;
+  specialist: string;
+  name?: string;
+  depth: number;
+  code?: HandoffCode;
+  seq?: number;
+}
+
+const AGENT = /^[a-z][a-z0-9-]{0,47}$/;
+const agentOf = (value: unknown): { agent?: string } =>
+  typeof value === 'string' && AGENT.test(value) ? { agent: value } : {};
 
 function safeStreamEvent(frame: string): SafeStreamEvent | null {
   const data = frame.split(/\r?\n/)
@@ -595,6 +625,7 @@ function shapedStreamEvent(event: Record<string, unknown>): SafeStreamEvent | nu
       ...(typeof event.preview === 'string' && event.preview.length <= 1_000
         ? { preview: event.preview }
         : {}),
+      ...agentOf(event.agent),
     };
   }
   if (event.type === 'tool.completed' && safeToolName(event.tool) &&
@@ -605,6 +636,7 @@ function shapedStreamEvent(event: Record<string, unknown>): SafeStreamEvent | nu
       tool: event.tool as string,
       duration: Math.max(0, Math.min(900, event.duration)),
       error: event.error,
+      ...agentOf(event.agent),
     };
   }
   if (event.type === 'delta' && typeof event.delta === 'string' &&
@@ -623,6 +655,22 @@ function shapedStreamEvent(event: Record<string, unknown>): SafeStreamEvent | nu
       requestId: event.requestId,
       tool: event.tool,
       message: event.message,
+      ...agentOf(event.agent),
+    };
+  }
+  if (event.type === 'handoff' && typeof event.stage === 'string' &&
+      ['requested', 'started', 'finished', 'failed', 'refused'].includes(event.stage) &&
+      typeof event.specialist === 'string' && AGENT.test(event.specialist) &&
+      Number.isSafeInteger(event.depth) && Number(event.depth) >= 1 && Number(event.depth) <= 2 &&
+      (event.name === undefined || (typeof event.name === 'string' && event.name.length <= 60)) &&
+      (event.code === undefined || (HANDOFF_CODES as readonly unknown[]).includes(event.code))) {
+    return {
+      type: 'handoff',
+      stage: event.stage as HandoffStage,
+      specialist: event.specialist,
+      depth: Number(event.depth),
+      ...(typeof event.name === 'string' && event.name.trim() ? { name: event.name.trim() } : {}),
+      ...(event.code ? { code: event.code as HandoffCode } : {}),
     };
   }
   return null;

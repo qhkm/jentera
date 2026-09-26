@@ -7,8 +7,11 @@
    events into the run's durable trace.
    ============================================================ */
 
+import type postgres from 'postgres';
 import type { Env } from './env';
 import type { SpecialistDefinition } from './specialists';
+import { append } from './runs';
+import type { RunnerHandoffEvent } from './runtime/runner-client';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,4 +60,40 @@ export function handoffInstructions(
     'Wait for their answer, then write one reply to the owner that says who did which part, by ' +
     'name (for example "Finance and records checked Bukku: …"). If a specialist could not finish, ' +
     'say which part is missing. Never present a missing part as done.';
+}
+
+/** A specialist's step, tagged with its name so the app can say who did it. */
+export function agentStep(name: string, detail: string): string {
+  const clean = name.replace(/[⟦⟧\r\n]/g, '').trim().slice(0, 60);
+  return clean ? `⟦${clean}⟧ ${detail}` : detail;
+}
+
+/** The live status line for a hand-off stage, or null when it needs none. */
+export function handoffStatus(stage: RunnerHandoffEvent['stage'], name: string): string | null {
+  if (stage === 'started') return `🤝 Asking ${name}…`;
+  if (stage === 'finished') return `✅ ${name} finished their part`;
+  if (stage === 'failed' || stage === 'refused') return `⚠️ ${name} could not help with this part`;
+  return null;
+}
+
+/** The durable record of a hand-off stage. The brief never reaches here. */
+export async function recordHandoff(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+  event: RunnerHandoffEvent,
+): Promise<void> {
+  await append(tx, businessId, runId, 'agent.handoff', {
+    stage: event.stage,
+    specialist: event.specialist,
+    depth: event.depth,
+    ...(event.code ? { code: event.code } : {}),
+  });
+}
+
+/** Specialist names by profile, for a line the runner sent without one. */
+export async function specialistNames(tx: postgres.TransactionSql): Promise<Map<string, string>> {
+  const rows = await tx<{ profile_key: string; name: string }[]>`
+    select profile_key, name from specialist_profile`;
+  return new Map(rows.map((row) => [row.profile_key, row.name]));
 }

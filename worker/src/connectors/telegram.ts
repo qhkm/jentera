@@ -580,7 +580,8 @@ export function telegramToolProgress(tool: string): string {
   if (tool === 'read_file' || tool === 'search_files') return 'I’m checking the files for the information we need.';
   if (tool === 'write_file' || tool === 'patch') return 'I’m preparing the file changes.';
   if (tool === 'image_generate' || tool.startsWith('bfl_')) return 'I’m starting the image generation. This can take a little while.';
-  if (tool === 'delegate_task') return 'I’m bringing in another specialist to help with this part.';
+  if (tool === 'ask_specialist') return 'I’m asking a specialist for help with part of this.';
+  if (tool === 'delegate_task') return 'I’m getting a helper to work on part of this.';
   if (tool === 'cronjob') return 'I’m working on the scheduled task and will check its status.';
   if (tool === 'memory') return 'I’m working with the saved context for this task.';
   return 'I’m working on the next part of your request.';
@@ -592,11 +593,12 @@ export function hermesToolLine(tool: string, preview?: string): string {
       : tool === 'web_search' ? '🔍'
         : tool === 'web_extract' || tool.startsWith('browser_') ? '🌐'
           : tool === 'image_generate' || tool.startsWith('bfl_') ? '🎨'
-            : tool === 'delegate_task' ? '👥'
-              : tool === 'cronjob' ? '⏰'
-                : tool === 'memory' ? '🧠'
-                  : /^(?:read_file|write_file|patch|search_files)$/.test(tool) ? '📁'
-                    : '⚙️';
+            : tool === 'ask_specialist' ? '🤝'
+              : tool === 'delegate_task' ? '👥'
+                : tool === 'cronjob' ? '⏰'
+                  : tool === 'memory' ? '🧠'
+                    : /^(?:read_file|write_file|patch|search_files)$/.test(tool) ? '📁'
+                      : '⚙️';
   const bounded = preview?.trim().slice(0, 1_000);
   return bounded ? `${emoji} ${tool}: "${bounded}"` : `${emoji} ${tool}...`;
 }
