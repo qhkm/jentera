@@ -12,6 +12,8 @@
    ============================================================ */
 
 export const HANDOFF_BRIEF_MAX = 2_000;
+/** The same bound the control plane puts on a turn's instructions. */
+export const HANDOFF_BASE_MAX = 20_000;
 export const HANDOFF_ANSWER_MAX = 16_000;
 /** Under Hermes's 420 s guard on tool calls issued together. */
 export const HANDOFF_MAX_MS = 390_000;
@@ -69,6 +71,11 @@ export function handoffFieldProblem(value) {
   if (typeof value.preamble !== 'string' || !value.preamble.trim() || value.preamble.length > 4_000) {
     return 'handoff.preamble must contain 1 to 4000 characters';
   }
+  /* Required, not optional: a specialist started without it would work
+     without Jentera's rules, the speaker or the business's facts. */
+  if (typeof value.base !== 'string' || !value.base.trim() || value.base.length > HANDOFF_BASE_MAX) {
+    return `handoff.base must contain 1 to ${HANDOFF_BASE_MAX} characters`;
+  }
   return null;
 }
 
@@ -90,14 +97,36 @@ export function handoffBudgetMs(deadlineAt, now) {
   return Math.min(deadlineAt - now - HANDOFF_ANSWER_RESERVE_MS, HANDOFF_MAX_MS);
 }
 
-/** The specialist's own turn: the control plane's preamble, then its remit. */
-export function specialistInstructions(preamble, specialist, outputsInstruction = '') {
+/** A specialist's own turn. The control plane writes the preamble and the
+ *  base — the rules every Jentera agent works under, who is speaking, the
+ *  business's confirmed facts and the clock — and this adds only who this
+ *  specialist is, whom it may ask, and where files for the owner go. */
+export function specialistInstructions({ preamble, base, specialist, guidance = '', outputsInstruction = '' }) {
   return [
     preamble,
+    base,
     `You are the ${specialist.name} specialist. Your remit: ${specialist.description}`,
     specialist.instructions ? `Business-owner instructions: ${specialist.instructions}` : '',
+    guidance,
     outputsInstruction,
   ].filter(Boolean).join('\n\n');
+}
+
+/** What a specialist at this depth may hand on, and to whom: the business's
+ *  other specialists, less anyone already waiting in its chain, while the
+ *  depth allows another level. */
+export function specialistGuidance({ roster, chain, depth, limits }) {
+  const others = depth < limits.maxDepth ? roster.filter((entry) => !chain.includes(entry.profile)) : [];
+  if (!others.length) {
+    return 'You cannot hand this part on to another specialist: do it yourself, and if you cannot ' +
+      'finish, say which part is missing.';
+  }
+  const list = others.map((entry) => `- ${entry.profile}: ${entry.name} — ${entry.description}`).join('\n');
+  return "If part of this clearly sits in another specialist's remit, you may hand it to them with the " +
+    'ask_specialist tool: give their profile key and a brief of exactly what you need, one at a time, ' +
+    `and wait for their answer. ${depth + 1 >= limits.maxDepth ? 'They cannot hand it on again, and ' : ''}` +
+    `the whole task has at most ${limits.maxHandoffs} hand-offs. Specialists you may ask:\n${list}\n` +
+    'Say in your reply which part they did, by name. Never present a missing part as done.';
 }
 
 export function addUsage(total, usage) {
@@ -175,6 +204,7 @@ export class HandoffEngine {
       outputsInstruction,
       limits: { maxDepth: handoff.maxDepth, maxHandoffs: handoff.maxHandoffs },
       preamble: handoff.preamble,
+      base: handoff.base,
       used: 0,
       usage: null,
       liveRuns: new Map(),
@@ -282,7 +312,15 @@ export class HandoffEngine {
     const deadline = this.deps.now() + budgetMs;
     const timer = setTimeout(() => own.abort(), budgetMs);
     const ctx = { runId: null };
-    const work = this.work(task, { key, entry, brief, depth, chain: [...caller.chain, key], signal, deadline, mark, ctx });
+    const chain = [...caller.chain, key];
+    const instructions = specialistInstructions({
+      preamble: task.preamble,
+      base: task.base,
+      specialist: entry,
+      guidance: specialistGuidance({ roster, chain, depth, limits: task.limits }),
+      outputsInstruction: task.outputsInstruction,
+    });
+    const work = this.work(task, { key, brief, instructions, depth, chain, signal, deadline, mark, ctx });
     task.settling.add(work);
     void work.then(() => task.settling.delete(work));
     try {
@@ -314,7 +352,7 @@ export class HandoffEngine {
   /** One hand-off's run from start to end: started, followed, and — when it
    *  was cut short — stopped and settled, so its usage is counted whatever
    *  ended it. Never rejects. */
-  async work(task, { key, entry, brief, depth, chain, signal, deadline, mark, ctx }) {
+  async work(task, { key, brief, instructions, depth, chain, signal, deadline, mark, ctx }) {
     let body = null;
     try {
       const started = await this.deps.hermes('/v1/runs', {
@@ -322,7 +360,7 @@ export class HandoffEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: brief,
-          instructions: specialistInstructions(task.preamble, entry, task.outputsInstruction),
+          instructions,
           ...(task.model ? { model: task.model } : {}),
           model_options: { reasoning: { enabled: true, effort: 'high' } },
         }),

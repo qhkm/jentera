@@ -55,7 +55,7 @@ export interface RunnerTaskRequest {
       confirmed; callers must not refresh it on retry. */
   deadlineAt?: number;
   /** Present when this task may hand work to specialists (docs/plans/2026-09-26-specialist-handoff.md). */
-  handoff?: { maxDepth: number; maxHandoffs: number; preamble: string };
+  handoff?: { maxDepth: number; maxHandoffs: number; preamble: string; base: string };
 }
 
 export interface RunnerTaskResponse {

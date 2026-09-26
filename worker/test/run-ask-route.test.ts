@@ -257,6 +257,44 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload.instructions).toContain('Who is speaking: a@example.com, the owner of this business');
   });
 
+  /* Only a business on the hand-off switch sends a specialist's base, and
+     everyone else's task start is what it was. */
+  it('carries the base a specialist works under only for a business on the hand-off switch', async () => {
+    await readyRuntime(A);
+    await asTenant(A, (tx) => tx`
+      insert into specialist_profile (business_id, profile_key, name, description)
+      values (${A}, 'records', 'Finance and records', 'Invoices, payments and cash flow'),
+             (${A}, 'growth', 'Growth and marketing', 'Campaigns and promotions')`);
+    const payloadFor = async (env: Env) => {
+      const response = await call('POST', '/api/runs/ask', env, cookieA, {
+        question: 'Reconcile last month', requestId: crypto.randomUUID(), mode: 'work', responseMode: 'deep',
+      });
+      expect(response.status).toBe(202);
+      const { runId } = await response.json() as { runId: string };
+      const [row] = await asOwner((sql) => sql<{ payload: Record<string, unknown> }[]>`
+        select t.payload from runtime_task t where t.run_id = ${runId}`);
+      return row.payload;
+    };
+    const on = await payloadFor({ ...durableEnv(), HANDOFF_ENABLED: 'true', HANDOFF_BUSINESS_IDS: A } as Env);
+    const handoff = on.handoff as { preamble: string; base: string };
+    expect(handoff).toMatchObject({ maxDepth: 2, maxHandoffs: 5 });
+    expect(handoff.base).toContain('Who is speaking: a@example.com, the owner of this business');
+    expect(handoff.base).toContain('Confirmed information about this business:');
+    expect(handoff.base).not.toContain('ask_specialist');
+    expect(String(on.instructions)).toContain('ask_specialist');
+
+    for (const env of [
+      { ...durableEnv(), HANDOFF_ENABLED: 'true', HANDOFF_BUSINESS_IDS: '' },
+      { ...durableEnv(), HANDOFF_ENABLED: 'true', HANDOFF_BUSINESS_IDS: B },
+      durableEnv(),
+    ] as Env[]) {
+      const off = await payloadFor(env);
+      expect(off).not.toHaveProperty('handoff');
+      expect(String(off.instructions)).not.toContain('ask_specialist');
+      expect(Object.keys(off).sort()).toEqual(Object.keys(on).filter((key) => key !== 'handoff').sort());
+    }
+  });
+
   it('routes new work to the user’s selected persistent bot profile', async () => {
     await readyRuntime(A);
     await asTenant(A, (tx) => tx`

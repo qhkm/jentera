@@ -36,7 +36,6 @@ import {
   prepareHermesAgent,
   retrieve,
   retrieveHermesContext,
-  speakerInstructions,
   type Speaker,
 } from '../ask';
 import { handoffEnabledFor, handoffTaskField } from '../handoff';
@@ -933,7 +932,7 @@ async function startDurableAsk(
         factKeys: prepared.usedKeys,
         grounded: prepared.grounded,
         responseMode,
-        ...(handoffRoster?.length ? { handoff: handoffTaskField(speaker ? speakerInstructions(speaker) : undefined) } : {}),
+        ...(prepared.handoffBase ? { handoff: handoffTaskField(prepared.handoffBase) } : {}),
         model,
         requestedAtMs: Date.now(),
         ...(selectedSkills.length ? { selectedSkills } : {}),

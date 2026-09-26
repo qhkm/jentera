@@ -521,7 +521,10 @@ function handoffField(value: unknown): HandoffTaskField | undefined {
   if (!Number.isSafeInteger(maxDepth) || maxDepth < 1 || maxDepth > 2) return undefined;
   if (!Number.isSafeInteger(maxHandoffs) || maxHandoffs < 1 || maxHandoffs > 5) return undefined;
   if (typeof field.preamble !== 'string' || !field.preamble.trim() || field.preamble.length > 4_000) return undefined;
-  return { maxDepth, maxHandoffs, preamble: field.preamble };
+  /* Without the base a specialist would work without Jentera's rules or the
+     business's facts, so no base means no hand-offs. */
+  if (typeof field.base !== 'string' || !field.base.trim() || field.base.length > RUNNER_INSTRUCTIONS_MAX) return undefined;
+  return { maxDepth, maxHandoffs, preamble: field.preamble, base: field.base };
 }
 
 function skillIds(value: unknown): string[] | undefined {

@@ -36,14 +36,15 @@ export interface HandoffTaskField {
   maxDepth: number;
   maxHandoffs: number;
   preamble: string;
+  /** What every specialist handed part of this task works under besides its
+      own lines: the operating rules, who is speaking, the business's
+      confirmed facts and the clock (`prepareHermesAgent`'s `handoffBase`). */
+  base: string;
 }
 
-/** The limits and preamble a task start carries to the runner. */
-export function handoffTaskField(speakerText?: string): HandoffTaskField {
-  return {
-    ...HANDOFF_LIMITS,
-    preamble: speakerText ? `${HANDOFF_PREAMBLE}\n\n${speakerText}` : HANDOFF_PREAMBLE,
-  };
+/** The limits, preamble and base a task start carries to the runner. */
+export function handoffTaskField(base: string): HandoffTaskField {
+  return { ...HANDOFF_LIMITS, preamble: HANDOFF_PREAMBLE, base };
 }
 
 /** What a turn that may hand off is told: who else is on the team and how to credit them. */

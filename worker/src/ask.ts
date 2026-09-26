@@ -178,10 +178,16 @@ Rules:
   interactions". Inventing provenance is worse than admitting you do
   not know, because the owner cannot check it.`;
 
-const HERMES_AGENT_PROMPT = `You are Jentera, the private Chief of Staff for the owner and their team.
-The Telegram user has been explicitly paired by the signed-in business owner.
+/** Who the lead agent is. A specialist handed part of a task is told who it
+    is instead, so this is the one part of the prompt it does not share. */
+const HERMES_AGENT_IDENTITY = `You are Jentera, the private Chief of Staff for the owner and their team.
+The Telegram user has been explicitly paired by the signed-in business owner.`;
 
-Rules:
+/** The rules every Jentera agent works under, whoever it is: the lead, a
+    specialist a turn was routed to, and a specialist handed part of a task.
+    Every one of them is prompt-only, so an agent not told them is not bound
+    by them. */
+const HERMES_AGENT_RULES = `Rules:
 - Interpret personal reminder requests naturally in any wording, including follow-ups,
   English and Bahasa Malaysia. Do not tell the user to retype a special phrase.
   For one-time reminders, prepare a proposal in your final reply using exactly one
@@ -323,6 +329,8 @@ Rules:
   Avoid tables in Telegram.
 - Be concise for simple questions and thorough when the user asks for research.`;
 
+const HERMES_AGENT_PROMPT = `${HERMES_AGENT_IDENTITY}\n\n${HERMES_AGENT_RULES}`;
+
 const QUICK_TURN_PROMPT = `Quick response contract:
 - Use no tools when the request can be answered accurately from the supplied business information
   or the existing conversation.
@@ -444,6 +452,31 @@ export function speakerInstructions(speaker: Speaker): string {
     "will be asked. Save what you learn about this person under their name, never as the owner's.";
 }
 
+/** What a specialist's own lines take of the instructions budget on top of
+    the base it is handed: the preamble, who it is, its remit and the owner's
+    instructions for it, who else it may ask, and where files go. The runner
+    adds those; the base leaves them this much room. */
+const HANDOFF_SPECIALIST_RESERVE = 4_500;
+
+/** The runner refuses a start body over 64 KiB. This is what the question,
+    the instructions and a specialist's base may take together, encoded; the
+    rest of the body (ids, the grant, the preamble) fits in what it leaves. */
+const START_BODY_TEXT_MAX = 58 * 1024;
+
+const encodedLength = (text: string): number => new TextEncoder().encode(JSON.stringify(text)).byteLength;
+
+export interface PreparedHermesAgent {
+  instructions: string;
+  input: string;
+  usedKeys: string[];
+  grounded: boolean;
+  /** Only for a turn that may hand off: what a specialist it asks works
+      under besides its own lines. The same rules, speaker, business facts
+      and clock this turn has, built by the same code, without this turn's
+      own identity, routing or roster. */
+  handoffBase?: string;
+}
+
 export function prepareHermesAgent(
   question: string,
   facts: FactRow[],
@@ -453,40 +486,54 @@ export function prepareHermesAgent(
   speaker?: Speaker,
   responseMode?: ResponseMode,
   handoffRoster?: readonly SpecialistDefinition[],
-): { instructions: string; input: string; usedKeys: string[]; grounded: boolean } {
+): PreparedHermesAgent {
   const recent = work.length === 0
     ? '(nothing yet)'
     : work
         .slice(0, 8)
         .map((entry) => `- ${entry.objective}${entry.outcome ? ` — ${entry.outcome}` : ''}`)
         .join('\n');
-  /* Stable policy first; the precise clock changes every request and must not
-     invalidate the reusable prefix before the business context. */
-  const handoff = handoffRoster?.length ? handoffInstructions(handoffRoster, specialist?.profile) : '';
-  const preamble = HERMES_AGENT_PROMPT +
-    `${specialist ? `\n\n${specialistRunInstructions(specialist, { handoff: Boolean(handoff) })}` : ''}` +
-    `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
-    `${handoff ? `\n\n${handoff}` : ''}` +
-    `${responseMode === 'quick' ? `\n\n${QUICK_TURN_PROMPT}` : ''}` +
-    '\n\n';
+  const speakerText = speaker ? speakerInstructions(speaker) : '';
   const clock =
     `\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}. Current timestamp (UTC): ${now.toISOString()}. Reminder timezone: Asia/Kuala_Lumpur (UTC+8).`;
-  const context = boundedContext(
+  const context =
     `Confirmed information about this business:\n${renderFacts(facts)}\n\n` +
     `Recent Jentera work:\n${recent}\n\n` +
     /* Hermes memory is a few kilobytes per profile; business facts copied
        into it crowd out what only the agent could know, and drift from the
        confirmed record the owner actually maintains. */
     'Jentera supplies the confirmed business facts above on every turn; do not save them to your memory. ' +
-    'Save only what Jentera cannot tell you.',
-    HERMES_INSTRUCTIONS_MAX - preamble.length - clock.length,
-  );
-  return {
-    instructions: `${preamble}${context}${clock}`,
+    'Save only what Jentera cannot tell you.';
+  /* Stable policy first; the precise clock changes every request and must not
+     invalidate the reusable prefix before the business context. */
+  const compose = (sections: string[], budget = HERMES_INSTRUCTIONS_MAX): string => {
+    const preamble = `${sections.filter(Boolean).join('\n\n')}\n\n`;
+    return `${preamble}${boundedContext(context, budget - preamble.length - clock.length)}${clock}`;
+  };
+  const turn = (handoff: string): string => compose([
+    HERMES_AGENT_PROMPT,
+    specialist ? specialistRunInstructions(specialist, { handoff: Boolean(handoff) }) : '',
+    speakerText,
+    handoff,
+    responseMode === 'quick' ? QUICK_TURN_PROMPT : '',
+  ]);
+  const prepared = {
     input: question,
     usedKeys: facts.map((fact) => fact.key),
     grounded: facts.length > 0,
   };
+  const handoff = handoffRoster?.length ? handoffInstructions(handoffRoster, specialist?.profile) : '';
+  if (handoff) {
+    const instructions = turn(handoff);
+    const handoffBase = compose([HERMES_AGENT_RULES, speakerText], HERMES_INSTRUCTIONS_MAX - HANDOFF_SPECIALIST_RESERVE);
+    /* A question too large to travel beside a second copy of the business
+       context runs without hand-offs, rather than as a start the runner
+       refuses. */
+    if (encodedLength(question) + encodedLength(instructions) + encodedLength(handoffBase) <= START_BODY_TEXT_MAX) {
+      return { ...prepared, instructions, handoffBase };
+    }
+  }
+  return { ...prepared, instructions: turn('') };
 }
 
 export async function answer(
