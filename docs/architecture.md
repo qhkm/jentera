@@ -607,8 +607,10 @@ to produce more.
   business/run pair. Exact per-run and per-user concurrency caps live inside
   the object, in addition to the edge limiter.
 - **Workers AI** — `toMarkdown` for uploaded PDFs, Office documents and
-  images during knowledge ingest. Chosen so the feature needs no third-party
-  key.
+  images during knowledge ingest, and `@cf/openai/whisper-large-v3-turbo` for
+  Telegram voice notes (`src/voice/transcribe.ts`, heard in Telegram admission
+  by `src/runtime/telegram-voice.ts`; the audio is not kept). Chosen so these
+  features need no third-party key.
 - **Analytics Engine `jentera_product`** — product events.
 - **Workers Logs** — invocation telemetry. Note that `wrangler tail` returns
   nothing on this Worker; verify through Postgres or the response instead.

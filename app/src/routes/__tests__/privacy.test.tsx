@@ -29,6 +29,16 @@ describe('privacy notice', () => {
     expect(document.documentElement).toHaveAttribute('lang', 'ms');
   });
 
+  it('says voice notes are transcribed by Cloudflare Workers AI and the audio is not kept, in both languages', async () => {
+    const user = userEvent.setup();
+    mount();
+    expect(screen.getByText(/Voice notes you send/)).toHaveTextContent(/Cloudflare Workers AI/);
+    expect(screen.getByText(/Voice notes you send/)).toHaveTextContent(/audio is not kept/);
+    await user.click(screen.getByRole('button', { name: 'Bahasa Malaysia' }));
+    expect(screen.getByText(/Nota suara yang anda hantar/)).toHaveTextContent(/Cloudflare Workers AI/);
+    expect(screen.getByText(/Nota suara yang anda hantar/)).toHaveTextContent(/Audio tidak disimpan/);
+  });
+
   it('discloses Calendar access, AI processing, retained attachments and revocation without claiming verification', () => {
     mount();
     expect(screen.getByRole('heading', { name: '14. Google sign-in and Google Calendar' })).toBeVisible();
