@@ -12,6 +12,7 @@ import {
   sendMessage,
   TelegramFileTooLarge,
   unreadableReply,
+  VOICE_MAX_BYTES,
   VOICE_REPLIES,
   voiceEcho,
 } from '../connectors/telegram';
@@ -54,7 +55,7 @@ export async function hearTelegramVoice(
 
   let audio: Uint8Array;
   try {
-    audio = await downloadTelegramFile(token, voice.fileId);
+    audio = await downloadTelegramFile(token, voice.fileId, VOICE_MAX_BYTES);
   } catch (error) {
     if (error instanceof TelegramFileTooLarge) {
       await say(VOICE_REPLIES.tooLong);

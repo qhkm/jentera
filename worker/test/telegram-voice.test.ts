@@ -10,7 +10,7 @@ const A = '11111111-1111-4111-8111-111111111111';
 let sent: string[];
 let transcribe: ReturnType<typeof vi.fn>;
 
-async function setup(transcript: string) {
+async function setup(transcript: string, fileSize = 4) {
   transcribe = vi.fn(async () => ({ text: transcript }));
   const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1', AISAR_MODEL_NAME: 'MiniMax-M3' });
   env.AI = { run: transcribe } as unknown as typeof env.AI;
@@ -31,7 +31,7 @@ async function setup(transcript: string) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/getFile')) {
-      return new Response(JSON.stringify({ ok: true, result: { file_path: 'voice/file_1.oga', file_size: 4 } }));
+      return new Response(JSON.stringify({ ok: true, result: { file_path: 'voice/file_1.oga', file_size: fileSize } }));
     }
     if (url.includes('/file/bot')) return new Response(new Uint8Array([0x4f, 0x67, 0x67, 0x53]));
     if (url.endsWith('/sendMessage')) sent.push((JSON.parse(String(init?.body)) as { text: string }).text);
@@ -85,6 +85,14 @@ describe('a Telegram voice note', () => {
     expect(row.question.length).toBeLessThanOrEqual(4_000);
     expect(row.refQuestion.length).toBeLessThanOrEqual(4_000);
     expect(row.input).toContain('Akhir sekali, hantar laporan.');
+  });
+
+  it('refuses a voice file over five megabytes without hearing it', async () => {
+    const { env, provider, intake } = await setup('never heard', 6 * 1024 * 1024);
+    await handleRuntimeQueueMessage(env, intake(12), { provider });
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(sent).toEqual([VOICE_REPLIES.tooLong]);
+    expect(await asOwner((sql) => sql`select id from run where business_id = ${A}`)).toHaveLength(0);
   });
 
   it('asks the owner to type a note it could not make out, and starts no run', async () => {

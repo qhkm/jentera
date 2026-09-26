@@ -376,6 +376,12 @@ describe('deciding whether a voice note can be heard', () => {
     expect(voiceRefusal({ ...voice, durationS: 601 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
     expect(voiceRefusal({ ...voice, size: 21 * 1024 * 1024 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
   });
+  /* Review 26 Sep: hearing holds bytes, a binary string and base64 at once, so
+     20 MB came near the isolate's 128 MB. A real ten-minute note is ~2.5 MB. */
+  it('refuses a voice file over five megabytes, and hears one under it', () => {
+    expect(voiceRefusal({ ...voice, size: 6 * 1024 * 1024 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
+    expect(voiceRefusal({ ...voice, size: 4 * 1024 * 1024 }, '123:AAtoken')).toBeNull();
+  });
   it('keeps the old answer for a bot whose token is in the vault', () => {
     const vault = { kind: 'vault' as const, env, businessId: A, secretId: 's' };
     expect(voiceRefusal(voice, vault)).toBe(unreadableReply('voice'));
