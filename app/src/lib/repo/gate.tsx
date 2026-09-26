@@ -10,12 +10,15 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
 import { LocalRepository } from './local';
 import { NoBusinessError, NotSignedInError, RemoteRepository } from './remote';
 import type { MeResponse } from './remote';
 import { RepositoryProvider } from './context';
 import { migrateLocalToRemote } from './migrate';
 import { PageLoading } from '@/components/ui';
+import { createQueryClient } from '@/lib/query/client';
+import { QueryScope } from '@/lib/query/scope';
 import {
   isNative,
   nativeAuthorizationHeaders,
@@ -33,6 +36,10 @@ type Chosen = {
   /** Session user id when remote; null for the demo. */
   account: string | null;
   email?: string | null;
+  /** The page's query cache: signed in only. The demo gets none. */
+  client?: QueryClient;
+  /** The business every query key starts with; null when there is none. */
+  businessId?: string | null;
 };
 
 /* `mode` was computed and then thrown away, so nothing downstream could
@@ -175,6 +182,7 @@ async function choose(): Promise<Chosen> {
 
   const remote = new RemoteRepository();
   if (me) remote.prime({ me });
+  let businessId = typeof me?.businessId === 'string' && me.businessId ? me.businessId : null;
   try {
     /* Handed to the provider rather than dropped; it mounts and asks
        for exactly this a moment later. */
@@ -185,6 +193,8 @@ async function choose(): Promise<Chosen> {
        state, not here. */
     if (e instanceof NoBusinessError) {
       await migrateLocalToRemote(new LocalRepository(), remote);
+      /* /api/me answered before the business existed. */
+      businessId = remote.createdBusinessId;
     } else if (e instanceof NotSignedInError) {
       /* Logout, expiry, and account deletion can land between /api/me and
          /api/state. That is an ordinary signed-out transition, not a broken
@@ -198,6 +208,10 @@ async function choose(): Promise<Chosen> {
   return {
     repo: remote,
     mode: 'remote',
+    /* Made here, once per page: choose() runs once even under StrictMode
+       (the `started` ref below), so there is never a second cache. */
+    client: createQueryClient(),
+    businessId,
     account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
     email: typeof me?.email === 'string' && me.email.trim() ? me.email.trim() : null,
     routinesVersion: me?.features?.routines?.apiVersion,
@@ -233,9 +247,14 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
+  const session = (
     <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} email={chosen.email} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion} appsVersion={chosen.appsVersion}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
     </SignedInProvider>
   );
+  /* The query cache is for signed-in pages only; the anonymous demo gets no
+     client and runs exactly as it always has. */
+  return chosen.client
+    ? <QueryScope client={chosen.client} businessId={chosen.businessId ?? null}>{session}</QueryScope>
+    : session;
 }

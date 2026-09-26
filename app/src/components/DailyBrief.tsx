@@ -1,7 +1,7 @@
 import { ArrowClockwise, ArrowRight, ArrowUpRight, Bell, BookOpen, ChatCircle, CheckCircle, Clock, WarningCircle } from '@phosphor-icons/react';
 import { Button, Eyebrow, LoadingState } from '@/components/ui';
+import type { ReactNode } from 'react';
 import { JenteraMascot } from '@/components/JenteraMascot';
-import { BookingsNeedsYou } from '@/components/BookingsNeedsYou';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { ActivityState } from '@/hooks/useActivity';
 import type { BusinessSnapshot, WorkSummary } from '@/lib/repo';
@@ -9,7 +9,6 @@ import { BUSINESS_TIME_ZONE, dailyBrief } from '@/lib/daily-brief';
 import { isRunId } from '@/lib/task';
 import type { View } from '@/routes/Dashboard';
 import type { BizTab } from '@/routes/views/MyBusinessView';
-import type { Booking } from '@/lib/apps/types';
 import { useApps } from '@/lib/apps/useApps';
 
 const STATUS: Record<string, string> = {
@@ -23,12 +22,9 @@ export function DailyBrief({ activity, snapshot, now, onNavigate, bookings }: {
   snapshot: BusinessSnapshot;
   now: Date;
   onNavigate: (view: View, tab?: BizTab, runId?: string) => void;
-  bookings?: {
-    items: Booking[];
-    onConfirm: (id: string) => Promise<Booking>;
-    onReread: (id: string) => Promise<Booking>;
-    onOpenAll: () => void;
-  } | null;
+  /** The waiting booking requests, above the rest of the brief; null when
+      there are none to show. */
+  bookings?: ReactNode;
 }) {
   const { t, lang } = useI18n();
   const apps = useApps();
@@ -61,7 +57,7 @@ export function DailyBrief({ activity, snapshot, now, onNavigate, bookings }: {
           <ArrowClockwise size={17} aria-hidden="true" />{t('brief.refresh')}
         </button>
       </header>
-      {bookings && <BookingsNeedsYou items={bookings.items} onConfirm={bookings.onConfirm} onReread={bookings.onReread} onOpenAll={bookings.onOpenAll} />}
+      {bookings}
       {activity.mode === 'error' ? (
         <div className="brief-state" role="alert"><WarningCircle size={24} aria-hidden="true" />
           <p>{t('brief.error')}</p>

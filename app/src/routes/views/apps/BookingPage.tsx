@@ -4,6 +4,7 @@ import { Button, Card } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { AppsError } from '@/lib/apps/api';
 import { configToInput } from '@/lib/apps/bookings';
+import { useSaveBookingsConfig } from '@/lib/apps/queries';
 import type { AppsApi, BookingsConfig } from '@/lib/apps/types';
 
 /* The public link and the one switch that matters day to day. The customer
@@ -17,6 +18,7 @@ export default function BookingPage({ api, config, onChange, onReload }: {
   onReload: () => void;
 }) {
   const { t } = useI18n();
+  const saveConfig = useSaveBookingsConfig(api);
   const installation = config.installation!;
   const accepting = config.settings?.accepting ?? false;
   const taking = installation.state === 'active' && accepting;
@@ -39,7 +41,7 @@ export default function BookingPage({ api, config, onChange, onReload }: {
     setSaving(true);
     setProblem(null);
     try {
-      onChange(await api.saveBookingsConfig({ ...configToInput(config), accepting: next }));
+      onChange(await saveConfig.mutateAsync({ ...configToInput(config), accepting: next }));
     } catch (error) {
       if (error instanceof AppsError && error.code === 'CONFIG_CHANGED') setProblem({ key: 'bookings.settings.error.changed', reload: true });
       else if (error instanceof AppsError && error.uncertain) setProblem({ key: 'bookings.settings.error.uncertain', reload: true });

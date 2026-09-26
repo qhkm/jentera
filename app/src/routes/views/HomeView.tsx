@@ -4,6 +4,7 @@
    ============================================================ */
 
 import { Link } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { hasConfirmedValue } from '@/lib/knowledge';
 import { Avatar, Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -32,6 +33,10 @@ import { useActivity } from '@/hooks/useActivity';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useSnapshot } from '@/lib/repo';
 import { useApps, useHomeApps } from '@/lib/apps/useApps';
+import { rereadBooking, useBookingAction } from '@/lib/apps/queries';
+import type { AppsApi, Booking } from '@/lib/apps/types';
+import { useRequiredBusinessId } from '@/lib/query/scope';
+import { BookingsNeedsYou } from '@/components/BookingsNeedsYou';
 import { appLive } from '@/lib/apps/bookings';
 import { DailyBrief } from '@/components/DailyBrief';
 import { HomeGoals } from '@/components/HomeGoals';
@@ -229,20 +234,9 @@ export default function HomeView({
       </section>}
 
       {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate}
-        bookings={homeApps && apps.api && apps.pending ? {
-          items: apps.pending,
-          onConfirm: async (id) => {
-            /* Refresh either way, so Home's count and the list agree with
-               whatever the server now holds. */
-            try {
-              return (await apps.api!.decide(id, 'confirm')).booking;
-            } finally {
-              void apps.refresh();
-            }
-          },
-          onReread: (id) => apps.api!.booking(id),
-          onOpenAll: () => onOpenApp?.('bookings'),
-        } : null} />}
+        bookings={homeApps && apps.api
+          ? <BriefBookings api={apps.api} items={apps.pending ?? []} onOpenAll={() => onOpenApp?.('bookings')} />
+          : null} />}
 
       {goalsEnabled && <HomeGoals onOpen={() => onNavigate('goals')} />}
 
@@ -577,4 +571,32 @@ export default function HomeView({
       </Card>
     </div>
   );
+}
+
+/** The brief's waiting requests. A confirm here goes through the same query
+    cache as the Bookings list (`useBookingAction`): reads already out are
+    cancelled and the answer is written into every cached copy of the
+    booking, so Bookings never shows it waiting with Confirm still on it. A
+    confirm that failed or got no answer is never sent again: the booking is
+    re-read (`rereadBooking`) — the line stays busy until that lands — and
+    only then are the lists read again, since a fresh scan landing first
+    would drop the line before the truth about it arrives. Rendered only
+    under a live AppsProvider, which exists only inside the signed-in page's
+    query cache; the demo never gets here. */
+function BriefBookings({ api, items, onOpenAll }: { api: AppsApi; items: Booking[]; onOpenAll: () => void }) {
+  const client = useQueryClient();
+  const businessId = useRequiredBusinessId();
+  const apps = useApps();
+  const action = useBookingAction(api);
+  async function confirm(id: string): Promise<Booking> {
+    return (await action.mutateAsync({ id, action: 'confirm' })).booking;
+  }
+  async function reread(id: string): Promise<Booking> {
+    try {
+      return await rereadBooking(client, api, businessId, id);
+    } finally {
+      void apps.refresh();
+    }
+  }
+  return <BookingsNeedsYou items={items} onConfirm={confirm} onReread={reread} onOpenAll={onOpenAll} />;
 }

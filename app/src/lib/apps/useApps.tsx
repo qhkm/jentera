@@ -1,12 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { loadPendingBookings } from './bookings';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keys } from '@/lib/query/keys';
+import { useBusinessId } from '@/lib/query/scope';
+import { appsListQuery, pendingBookingsQuery, refreshApps } from './queries';
 import type { AppsApi, AppsList, Booking, InstalledApp } from './types';
 
 /* One source for the business's apps, so Home, the bell, the daily brief and
-   the Bookings screen agree. It loads when apps are on, again when the app
-   returns to the foreground, again when the unread alerts count rises (a new
-   booking request arrives as an alert, and the bell polls while the app stays
-   on screen), and again after any change (refresh). */
+   the Bookings screen agree. The list and the waiting requests are queries
+   in the page's cache (lib/query): a revisit inside 30 s shows them with no
+   request, and a return to the app after that reads them again quietly.
+   They are also read again when the unread alerts count rises (a new
+   booking request arrives as an alert, and the bell polls while the app
+   stays on screen), and after any change (refresh). */
 
 export interface AppsState {
   /** Apps are on for this owner and the repository can reach them. */
@@ -23,6 +28,8 @@ export interface AppsState {
 const OFF: AppsState = {
   enabled: false, api: null, list: null, pending: null, loading: false, error: false, refresh: async () => {},
 };
+/** One empty list, so "nothing waits" keeps its identity between renders. */
+const NONE: Booking[] = [];
 const AppsContext = createContext<AppsState>(OFF);
 
 export function AppsProvider({ api, unread = null, children }: {
@@ -31,48 +38,39 @@ export function AppsProvider({ api, unread = null, children }: {
   unread?: number | null;
   children: ReactNode;
 }) {
-  const [list, setList] = useState<AppsList | null>(null);
-  const [pending, setPending] = useState<Booking[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const generation = useRef(0);
+  const businessId = useBusinessId();
+  /* Off without an API (the demo, or apps not on for this owner) or without
+     a signed-in business to key the cache by. Neither changes while a page
+     is open, so this never swaps a mounted tree for another. */
+  if (!api || !businessId) return <AppsContext.Provider value={OFF}>{children}</AppsContext.Provider>;
+  return <LiveAppsProvider api={api} businessId={businessId} unread={unread}>{children}</LiveAppsProvider>;
+}
 
-  const refresh = useCallback(async () => {
-    if (!api) return;
-    const mine = ++generation.current;
-    setLoading(true);
-    try {
-      const next = await api.list();
-      const bookings = next.apps.find((app) => app.key === 'bookings');
-      /* The list's count is every pending request not yet started, which is
-         everything the 91-day scan could find; at 0 the scan is a wasted
-         round trip before Home and Bookings can draw. */
-      const nextPending = !bookings ? null
-        : bookings.pending === 0 ? [] : await loadPendingBookings(api, new Date());
-      if (mine !== generation.current) return;
-      setList(next);
-      setPending(nextPending);
-      setError(false);
-    } catch {
-      if (mine === generation.current) setError(true);
-    } finally {
-      if (mine === generation.current) setLoading(false);
-    }
-  }, [api]);
-
+function LiveAppsProvider({ api, businessId, unread, children }: {
+  api: AppsApi;
+  businessId: string;
+  unread: number | null;
+  children: ReactNode;
+}) {
+  const client = useQueryClient();
+  const list = useQuery(appsListQuery(api, businessId));
+  const bookings = list.data?.apps.find((app) => app.key === 'bookings');
+  /* The list's count is every pending request not yet started, which is
+     everything the scan could find. At 0 there is nothing to ask for, and
+     whatever an earlier scan left in the cache no longer waits. */
+  const scanning = (bookings?.pending ?? 0) > 0;
+  const scan = useQuery({ ...pendingBookingsQuery(api, businessId), enabled: scanning });
+  const pending = !bookings ? null : !scanning ? NONE : scan.data ?? null;
+  /* So that scan is dropped, not kept: when a new request arrives later,
+     the waiting requests are unknown until a fresh scan lands, never the
+     old, already-decided ones with their Confirm. Every observer of the
+     scan is disabled at 0, so nothing reads it again here; a read of it
+     still in flight is cancelled. */
   useEffect(() => {
-    if (!api) {
-      setList(null);
-      setPending(null);
-      return;
-    }
-    void refresh();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void refresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [api, refresh]);
+    if (!scanning) void client.resetQueries({ queryKey: keys.pendingBookings(businessId), exact: true });
+  }, [scanning, client, businessId]);
+
+  const refresh = useCallback(() => refreshApps(client, businessId), [client, businessId]);
 
   /* The first known count is what the mount-time load already covered; after
      that, each rise is something new. A count that falls (read) or goes
@@ -85,7 +83,13 @@ export function AppsProvider({ api, unread = null, children }: {
     if (before !== null && unread > before) void refresh();
   }, [unread, refresh]);
 
-  const value: AppsState = api ? { enabled: true, api, list, pending, loading, error, refresh } : OFF;
+  const listData = list.data ?? null;
+  const loading = list.isFetching || (scanning && scan.isFetching);
+  const error = list.isError || (scanning && scan.isError);
+  const value = useMemo<AppsState>(
+    () => ({ enabled: true, api, list: listData, pending, loading, error, refresh }),
+    [api, listData, pending, loading, error, refresh],
+  );
   return <AppsContext.Provider value={value}>{children}</AppsContext.Provider>;
 }
 

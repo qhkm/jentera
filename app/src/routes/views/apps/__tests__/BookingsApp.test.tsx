@@ -1,25 +1,23 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
 import BookingsApp from '../BookingsApp';
-import { I18nProvider } from '@/i18n/I18nProvider';
-import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
 import { configFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
+import { renderWithQuery, returnToApp } from '@/test-support/query';
 
-async function mount(api = fakeAppsApi(), section: string | null = null) {
+async function mount(api = fakeAppsApi(), section: string | null = null, client?: QueryClient) {
   const repo = new LocalRepository();
   await repo.setBizType('restaurant');
   await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
   const onSection = vi.fn();
   const onBack = vi.fn();
-  render(<RepositoryProvider repository={repo}><I18nProvider><AppsProvider api={api}>
+  const view = await renderWithQuery(<AppsProvider api={api}>
     <BookingsApp bookingId={null} section={section} onSection={onSection} onBack={onBack} onConnectCalendar={vi.fn()} />
-  </AppsProvider></I18nProvider></RepositoryProvider>);
-  // LocalRepository.load() resolves on a microtask; flush it inside act.
-  await act(async () => {});
-  return { api, onSection, onBack, user: userEvent.setup() };
+  </AppsProvider>, { repository: repo, client });
+  return { api, onSection, onBack, user: userEvent.setup(), client: view.client, unmount: view.unmount };
 }
 
 describe('BookingsApp', () => {
@@ -70,5 +68,48 @@ describe('BookingsApp', () => {
     const { user } = await mount(api);
     await user.click(await screen.findByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('tab', { name: 'Bookings' })).toBeInTheDocument();
+  });
+
+  it('shows the settings again on a revisit inside 30 s without asking the server', async () => {
+    const first = await mount(fakeAppsApi(), 'page');
+    expect(await screen.findByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+    first.unmount();
+    await mount(first.api, 'page', first.client);
+    expect(screen.getByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+    expect(first.api.bookingsConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a saved switch at once from the server\'s answer, without reading the settings again', async () => {
+    const api = fakeAppsApi({
+      saveBookingsConfig: vi.fn(async () => configFixture({ settings: { ...configFixture().settings!, accepting: false } })),
+    });
+    const { user } = await mount(api, 'page');
+    await user.click(await screen.findByRole('checkbox', { name: 'Taking bookings' }));
+    expect(await screen.findByText(/^Paused\./)).toBeInTheDocument();
+    expect(api.bookingsConfig).toHaveBeenCalledTimes(1);
+  });
+
+  /* A save from the owner's other device meanwhile, then a return to the
+     app after 30 s: what they had typed here stays. Saving it is what finds
+     the newer version (CONFIG_CHANGED, with Reload), not a quiet read. */
+  it('keeps what the owner is typing in Settings when they come back to the app', async () => {
+    let version = 3;
+    const api = fakeAppsApi({ bookingsConfig: vi.fn(async () => configFixture({ version })) });
+    const { client, user } = await mount(api, 'settings');
+    await user.click(await screen.findByRole('button', { name: 'Location and booking link' }));
+    const location = screen.getByLabelText('Where the booking takes place');
+    await user.clear(location);
+    await user.type(location, 'Level 2, Wisma Kita');
+    version = 4;
+    await returnToApp(client);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(screen.getByLabelText('Where the booking takes place')).toHaveValue('Level 2, Wisma Kita');
+  });
+
+  it('reads the settings again on a return to the app while another tab is open', async () => {
+    const { api, client } = await mount(fakeAppsApi(), 'page');
+    expect(await screen.findByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+    await returnToApp(client);
+    await waitFor(() => expect(api.bookingsConfig).toHaveBeenCalledTimes(2));
   });
 });

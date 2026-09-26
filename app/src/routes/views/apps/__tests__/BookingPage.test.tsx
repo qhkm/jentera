@@ -1,22 +1,20 @@
-import { act, render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BookingPage from '../BookingPage';
-import { I18nProvider } from '@/i18n/I18nProvider';
-import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsError } from '@/lib/apps/api';
 import { configFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
+import { keys } from '@/lib/query/keys';
+import { renderWithQuery, TEST_BUSINESS_ID } from '@/test-support/query';
 
 async function mount(api = fakeAppsApi(), config = configFixture()) {
   const onChange = vi.fn();
   const onReload = vi.fn();
   const user = userEvent.setup();
-  render(<RepositoryProvider repository={new LocalRepository()}><I18nProvider>
-    <BookingPage api={api} config={config} onChange={onChange} onReload={onReload} />
-  </I18nProvider></RepositoryProvider>);
-  await act(async () => {});
-  return { api, onChange, onReload, user };
+  const { client } = await renderWithQuery(<BookingPage api={api} config={config} onChange={onChange} onReload={onReload} />,
+    { repository: new LocalRepository() });
+  return { api, onChange, onReload, user, client };
 }
 afterEach(() => { Reflect.deleteProperty(navigator, 'share'); });
 
@@ -42,10 +40,13 @@ describe('BookingPage', () => {
   it('pauses with the saved version, and hands back the saved config', async () => {
     const paused = configFixture({ settings: { ...configFixture().settings!, accepting: false } });
     const api = fakeAppsApi({ saveBookingsConfig: vi.fn(async () => paused) });
-    const { onChange, user } = await mount(api);
+    const { client, onChange, user } = await mount(api);
     await user.click(screen.getByRole('checkbox', { name: 'Taking bookings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ version: 3, accepting: false, slug: 'seido' }));
     expect(onChange).toHaveBeenCalledWith(paused);
+    // The answer is the cached config now, with no second read.
+    expect(client.getQueryData(keys.bookingsConfig(TEST_BUSINESS_ID))).toEqual(paused);
+    expect(api.bookingsConfig).not.toHaveBeenCalled();
   });
 
   it('asks for a reload when the switch meets a newer version', async () => {

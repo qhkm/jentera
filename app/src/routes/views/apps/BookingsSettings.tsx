@@ -3,6 +3,7 @@ import { Button, Input } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useBusiness } from '@/hooks/useBusiness';
 import { AppsError } from '@/lib/apps/api';
+import { useSaveBookingsConfig } from '@/lib/apps/queries';
 import type { AppsApi, BookingService, BookingsConfig, BookingsConfigInput, WeeklyHours } from '@/lib/apps/types';
 
 /* Monday first, as a Malaysian week reads; 0 is Sunday in the data. */
@@ -102,6 +103,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
 }) {
   const { t, lang } = useI18n();
   const { business } = useBusiness();
+  const saveConfig = useSaveBookingsConfig(api);
   const installed = config.installation !== null;
   const [slugInput, setSlugInput] = useState<string | null>(config.installation?.slug ?? null);
   const slug = slugInput ?? slugFrom(business.name);
@@ -213,7 +215,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     };
     setSaving(true);
     try {
-      onSaved(await api.saveBookingsConfig(input));
+      onSaved(await saveConfig.mutateAsync(input));
     } catch (error) {
       const code = error instanceof AppsError ? error.code : '';
       if (code === 'SLUG_TAKEN') {

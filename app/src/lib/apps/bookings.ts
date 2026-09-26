@@ -39,14 +39,17 @@ export async function loadWindow(api: AppsApi, query: Omit<BookingsQuery, 'curso
   return rows;
 }
 
-/** Requests waiting on the owner that can still be confirmed, soonest first. */
+/** A request still waiting on the owner: pending, and not past its start (a
+    pending booking whose start has passed can no longer be confirmed). */
+export function stillWaiting(booking: Booking): boolean {
+  return booking.status === 'pending' && !booking.expired;
+}
+
 /** Every request still waiting on the owner, soonest first: one request for
     the whole horizon (the API allows a 91-day window for pending only). */
 export async function loadPendingBookings(api: AppsApi, now: Date): Promise<Booking[]> {
   const rows = await loadWindow(api, { from: malaysiaDay(now), days: PENDING_SCAN_DAYS, status: 'pending' });
-  return rows
-    .filter((booking) => booking.status === 'pending' && !booking.expired)
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  return rows.filter(stillWaiting).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
 /** What the owner should know about the booking's Google Calendar event.
@@ -130,6 +133,47 @@ export function groupByDay(bookings: Booking[]): [string, Booking[]][] {
     days.set(day, [...(days.get(day) ?? []), booking]);
   }
   return [...days.entries()];
+}
+
+/** A booking as its own query last read it, and when (ms since epoch). */
+export interface OwnRead {
+  booking: Booking;
+  updatedAt: number;
+}
+
+/** The rows a Bookings list shows, soonest first, or null while the list
+    itself has not loaded.
+    - A booking decided in this view (`kept`) is drawn from its own query:
+      the action's answer, then only later reads of that one booking (a
+      Calendar poll). No list read can put it back to pending, and it stays
+      when a later list leaves it out: Needs you's pending-only scan drops a
+      card the moment it is decided, WhatsApp link and all.
+    - Any other row is drawn from whichever read it last: the list, or its
+      own query (a Calendar poll).
+    Precondition: mark an id `kept` only once `writeBooking` or
+    `rereadBooking` (`./queries`) has written its own query for it with the
+    decided value. Marking it any earlier is actively harmful, not merely
+    premature: a Calendar poll can already have left a pre-decision (stale)
+    read of that booking in its own query, and `kept` skips the timestamp
+    comparison entirely — it would pin that stale own-read ahead of a newer,
+    correct list read until the action's write finally lands. */
+export function mergeBookingRows(
+  list: Booking[] | null,
+  listUpdatedAt: number,
+  own: ReadonlyMap<string, OwnRead>,
+  kept: ReadonlySet<string>,
+): Booking[] | null {
+  if (list === null) return null;
+  const listed = new Set(list.map((booking) => booking.id));
+  const rows = list.map((booking) => {
+    const read = own.get(booking.id);
+    return read && (kept.has(booking.id) || read.updatedAt > listUpdatedAt) ? read.booking : booking;
+  });
+  for (const id of kept) {
+    const read = own.get(id);
+    if (read && !listed.has(id)) rows.push(read.booking);
+  }
+  return rows.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
 /** The saved settings as a save request for the same version. */

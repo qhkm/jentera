@@ -17,6 +17,7 @@ import type { AskAnswer } from '@/lib/repo';
 import type { RoutinesApi } from '@/lib/routines/types';
 import { listFixture } from '@/lib/routines/__tests__/fixtures';
 import { bookingFixture, BOOKING_ID, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
+import { renderWithQuery } from '@/test-support/query';
 
 beforeEach(() => {
   localStorage.clear();
@@ -30,7 +31,7 @@ async function mount(children: ReactNode, repo = new LocalRepository(), entry = 
   await repo.setBizType('restaurant');
   await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
   repo.activity = async () => ({ counters: { handled: 0, needsYou: 2, minutesSaved: 0, thisWeek: 0, connections: 0 }, work: [] });
-  return render(
+  const tree = (
     <MemoryRouter initialEntries={[entry]}>
       <SignedInProvider value={options.signedIn ?? true} account="workspace-modes-test" routinesVersion={options.routinesVersion} appsVersion={options.appsVersion}>
         <RepositoryProvider repository={repo}>
@@ -41,8 +42,10 @@ async function mount(children: ReactNode, repo = new LocalRepository(), entry = 
           </I18nProvider>
         </RepositoryProvider>
       </SignedInProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  /* A signed-in page has a query cache (RepositoryGate); the anonymous demo has none. */
+  return options.signedIn === false ? render(tree) : renderWithQuery(tree);
 }
 const INSTALLED = {
   apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 0 }],
