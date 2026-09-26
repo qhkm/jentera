@@ -217,7 +217,9 @@ export function AskReply({
           </div>
           {connection.connector && <CalendarConnectCard runId={message.runId} title={message.taskTitle} onContinue={onContinueTask} />}
           {!connection.connector && handoff.reason && onOpenBusinessBrowser && <BrowserHandoffCard reason={handoff.reason} onOpen={onOpenBusinessBrowser} runId={message.runId} title={message.taskTitle} onContinue={onContinueTask} />}
-          {completedRequest && !connection.connector && !handoff.reason && isRunId(message.runId)
+          {/* A reminder card is the input the reply waits for. A second
+              "Continue in Chat" beside it sent an empty follow-up on 25 Sep. */}
+          {completedRequest && !connection.connector && !handoff.reason && !reminderDraft && isRunId(message.runId)
             && ['needs_input', 'blocked'].includes(message.taskStatus ?? '') && onContinueTask && (
               <section className="card ask-browser-handoff" aria-label={t('task.recovery.title')}>
                 <h3>{t('task.recovery.title')}</h3>

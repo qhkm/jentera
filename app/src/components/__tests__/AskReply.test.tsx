@@ -241,6 +241,24 @@ describe('AskReply: conversation versus work', () => {
       expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
     } finally { fetch.mockRestore(); }
   });
+  it('offers the reminder card, not a second “continue” path, when a reply waits on a reminder', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: false, err: 'Not found' }), { status: 404 }));
+    const waiting = (text: string) => render(
+      <RepositoryProvider repository={new LocalRepository()}><I18nProvider><ToastProvider>
+        <AskReply message={{ from: 'ai', text, state: 'done', runId: RUN, taskStatus: 'needs_input', taskTitle: 'add reminder' }}
+          onOpenActivity={() => {}} onRetry={() => {}} onContinueTask={() => {}} />
+      </ToastProvider></I18nProvider></RepositoryProvider>);
+    try {
+      const reminder = waiting('Tap the card to confirm.\n```jentera-reminder\n'
+        + JSON.stringify({ message: 'Breakfast at the hotel', dueAt: '2027-01-01T00:00:00.000Z', timeZone: 'Asia/Kuala_Lumpur' }) + '\n```');
+      await screen.findByLabelText('Remind me to');
+      expect(screen.queryByRole('region', { name: 'Continue this task' })).toBeNull();
+      reminder.unmount();
+
+      waiting('Which branch should I send it to?');
+      expect(await screen.findByRole('region', { name: 'Continue this task' })).toBeInTheDocument();
+    } finally { fetch.mockRestore(); }
+  });
   it('recovers a failed task’s image and displays it inline without opening a dialog', async () => {
     const file = { id: 'image-1', runId: RUN, name: 'result.png', contentType: 'image/png', size: 8, createdAt: '2026-09-12T01:00:00Z' };
     const repo = Object.assign(new LocalRepository(), {

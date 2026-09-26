@@ -66,6 +66,43 @@ describe('personal reminder scheduling', () => {
       expect(outbox).toHaveLength(1); expect(outbox[0].user_id).toBe(user);
     });
   });
+  it('finishes the task that drafted it once the person who asked saves the reminder', async () => {
+    const seed = async (requestedBy: string) => asOwner(async sql => {
+      await sql`insert into run (id, business_id, kind, trigger_shape, runtime, model, status, ended_at, requested_by)
+                values (${ID}, ${A}, 'ask', 'owner.ask', 'hermes-sprite', 'deepseek', 'completed', now(), ${requestedBy})`;
+      await sql`insert into work_record (business_id, run_id, objective, status, kind)
+                values (${A}, ${ID}, 'add reminder tomorrow 8am', 'needs_input', 'work')`;
+    });
+    const state = () => asTenant(A, async tx => {
+      const [work] = await tx<{ status: string }[]>`select status from work_record where run_id = ${ID}`;
+      const events = await tx<{ payload: { source?: string; status?: string } }[]>`
+        select payload from run_event where run_id = ${ID} and type = 'outcome.observed'`;
+      return { status: work.status, events: events.map(e => e.payload) };
+    });
+
+    await seed(user);
+    expect((await call('POST', input())).status).toBe(200);
+    expect(await state()).toEqual({ status: 'completed', events: [expect.objectContaining({ source: 'reminder.saved', status: 'completed' })] });
+    // saving the same reminder again settles nothing twice
+    expect((await call('POST', input())).status).toBe(200);
+    expect((await state()).events).toHaveLength(1);
+  });
+
+  it('leaves a colleague\'s waiting task alone when someone else saves a reminder with its id', async () => {
+    const [colleague] = await asOwner(sql => sql<{ id: string }[]>`select id from app_user where email = 'reminder-c@example.com'`);
+    await asOwner(async sql => {
+      await sql`insert into run (id, business_id, kind, trigger_shape, runtime, model, status, ended_at, requested_by)
+                values (${ID}, ${A}, 'ask', 'owner.ask', 'hermes-sprite', 'deepseek', 'completed', now(), ${colleague.id})`;
+      await sql`insert into work_record (business_id, run_id, objective, status, kind)
+                values (${A}, ${ID}, 'add reminder tomorrow 8am', 'needs_input', 'work')`;
+    });
+    expect((await call('POST', input())).status).toBe(200);
+    await asTenant(A, async tx => {
+      const [work] = await tx`select status from work_record where run_id = ${ID}`;
+      expect(work.status).toBe('needs_input');
+    });
+  });
+
   it('does not send cancelled reminders or reminders for removed members', async () => {
     await call('POST', input());
     const cancelled = await (await call('DELETE', undefined, cookie, `/api/reminders/${ID}`)).json();

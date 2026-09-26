@@ -4,6 +4,7 @@ import { businessHasAccess } from './access';
 import { hasBusiness, resolveTenant } from './tenancy';
 import { createNotification } from './notifications/store';
 import { pushConfigured } from './push/send';
+import { append } from './runs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 interface ReminderRow { id: string; user_id: string; message: string; due_at: Date; time_zone: string; status: string }
@@ -52,7 +53,25 @@ export async function handleReminders(request: Request, env: Env, url: URL, cors
     const [row] = await tx<ReminderRow[]>`insert into reminder (id, business_id, user_id, message, due_at, time_zone)
       values (${input.id}, ${businessId}, ${userId}, ${input.message}, ${input.dueAt}, ${input.timeZone})
       on conflict (id) do nothing returning *`;
-    return row ? { row } : { error: 'Request identifier is unavailable.', status: 409 };
+    if (!row) return { error: 'Request identifier is unavailable.', status: 409 };
+    /* A drafted reminder carries the id of the reply that drafted it, and
+       saving the card is the input that reply was waiting for. Until 26
+       September the task kept asking after the reminder was set; the owner
+       dismissed it and the daily summary called a delivered reminder
+       cancelled. Only the person who asked can finish it this way. */
+    const settled = await tx`update work_record w set status = 'completed', updated_at = now()
+      from run r
+      where r.id = ${input.id} and r.business_id = ${businessId} and r.requested_by = ${userId}
+        and r.status = 'completed'
+        and w.business_id = ${businessId} and w.run_id = r.id and w.kind = 'work'
+        and w.status in ('needs_input', 'needs_review')
+      returning w.id`;
+    if (settled.length) {
+      await append(tx, businessId, input.id, 'outcome.observed', {
+        assessmentVersion: 1, kind: 'work', status: 'completed', source: 'reminder.saved',
+      });
+    }
+    return { row };
   });
   if (!result.row) return json({ ok: false, err: result.error }, result.status);
   const subscribed = await withTenant(env, businessId, async tx => {
