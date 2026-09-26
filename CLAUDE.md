@@ -511,13 +511,21 @@ Specialists can hand part of a task to each other
 (`docs/plans/2026-09-26-specialist-handoff.md`, plan beside it). The caller's
 Hermes turn calls `ask_specialist`; the tool asks the runner on loopback with
 the Hermes key, against `GET /v1/handoff/available` and `POST /v1/handoff`,
-both answered before the runner-key check and accepting only that key
-(`runner/src/server.mjs`). `runner/src/handoff.mjs` then runs the specialist
-at `/p/<profile>/v1/runs` while the caller waits, relaying its tools and
-approvals into the task's stream marked `agent`. The limits hold in the
-runner, not the model: two levels, five hand-offs, one at a time, and
-`min(time left − 60 s, 390 s)` per hand-off — 390 s stays under Hermes's
-420 s guard on tool calls issued together. The brief never leaves the
+both answered before the runner-key check and accepting only that key, from
+a loopback address with no Fly forwarding header (`runner/src/server.mjs`).
+`runner/src/handoff.mjs` then runs the specialist at `/p/<profile>/v1/runs`
+while the caller waits, relaying its tools and approvals into the task's
+stream marked `agent`. The specialist is told the control plane's preamble
+and `handoff.base` — the same rules, speaker, confirmed facts and clock the
+asking turn has, built by `prepareHermesAgent` — then its own remit and whom
+it may ask. The limits hold in the runner, not the model: two levels, five
+hand-off requests (refused ones count), one at a time, and
+`min(time left − 60 s, 390 s)` per hand-off, timed from before the start —
+390 s stays under Hermes's 420 s guard on tool calls issued together. A
+hand-off that is stopped or runs out of time answers its caller at once;
+its usage settles in the background for up to 12 s, and whatever freezes the
+task's terminal record waits for that first. A specialist's approval still
+waiting when its hand-off ends lapses as a deny. The brief never leaves the
 sprite: `ask_specialist`'s own step has no preview, the same as
 `execute_code`. The switch is two vars in `worker/wrangler.toml`
 (`handoffEnabledFor` in `worker/src/handoff.ts`): `HANDOFF_ENABLED` and

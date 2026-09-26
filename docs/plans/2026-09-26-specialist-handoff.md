@@ -486,3 +486,107 @@ touching this again:
 - A nested (depth-2) hand-off is not distinguished in the popover — its
   `depth` is carried on `RunHandoff` but not shown, so it looks the same
   as a depth-1 one.
+- A specialist run orphaned by a runner restart is never stopped (final
+  review M8): the engine's state is in memory, so a restarted runner cannot
+  reach it. It is in `docs/todo.md`.
+
+**Final review fix wave (27 September).** A whole-branch review of
+`c7ec515..84388b1` found no Critical issue, three Important and eleven
+Minor. The rulings (ledger, "Final review" onwards):
+
+- I1, I2 and I3 are fixed before release, not after: all three live in the
+  runner bundle, and fixing them later would cost a second fleet release.
+- I2: the Worker sends the specialist-neutral base as `handoff.base`, built
+  by the same code as the asking turn's instructions, and the runner builds
+  a specialist's instructions from preamble + base + its own identity and
+  remit + roster and limits guidance. This also closes M3. It amends ruling
+  3 above: the start body now carries the base as well as the limits and
+  preamble, for a business on the switch only.
+- I3 and M10 together: the caller's tool is answered at once when a
+  hand-off is cut short, its usage settles in the background, the task's
+  terminal record waits (bounded) for it, and the budget clock starts before
+  the start POST.
+- M1, M2, M4, M6, M7, M9 and M11 are pulled into the wave; M5 is recorded
+  below as a deviation; M8 goes to `docs/todo.md`.
+
+What changed, in the order it landed:
+
+- **A lapsed specialist approval no longer fails the task (I1).** When a
+  hand-off ends while its specialist's approval waits, the runner records
+  the request as a lapsed deny instead of forgetting it, so the Worker's
+  timeout deny answers 200 `duplicate`. The Worker also takes a runner 409
+  on that path as settled (`RunnerApprovalConflictError`), since it means
+  the request is not open there any more (lapsed, or the task already
+  ended), and carries on to the root's own answer; before, it retried the
+  409 until the task failed with that answer in hand. An owner's Approve
+  that the runner refuses as lapsed now reads as expired (web: 409
+  `APPROVAL_EXPIRED`, which the card shows as no longer waiting; Telegram
+  edits the bubble), tells the run it was denied (`approval_lapsed`) and
+  resumes the task at once, instead of 503 on every tap. Holding the
+  hand-off's budget while its approval waits was optional and not done.
+- **Aborted hand-offs answer at once and keep their usage (I3, M10).** A
+  stop, a timeout, a cascade or the next task's registration answers the
+  caller's tool the moment it happens. The run then settles in the
+  background: the stop, then status reads every 0.5 s for up to 12 s until
+  Hermes records the run's end with its usage. Every path that freezes the
+  task's terminal record (the status and stop routes, the watchdog and
+  admission through `activeTask`, and the deadline and quarantine finalizers)
+  waits for pending settlements first, bounded at 17 s. The budget clock now
+  starts before the start POST and every read is capped at 5 s, so the
+  tool's worst case is the budget itself, under Hermes's 420 s.
+- **Refused requests count toward the five (M4).** The engine counted only
+  the requests that passed every check; the spec counts every request that
+  reaches the runner, and now so does the engine.
+- **A specialist works under Jentera's rules (I2, M3).** Before, a
+  specialist in a hand-off was told the preamble and its remit only: none of
+  the operating rules, not who was speaking, not the business's facts.
+  `prepareHermesAgent` now also returns `handoffBase`: the rules (the lead's
+  prompt less its Chief of Staff identity), the speaker, the confirmed facts
+  and recent work, and the clock, without the asking turn's routing line or
+  roster. It is bounded to leave 4,500 characters of the instructions budget
+  for the specialist's own lines, and a question too large to travel beside
+  it (the start body is refused over 64 KiB) runs without hand-offs rather
+  than failing to start. The payload's `handoff` field is present exactly
+  when the base is, so a roster naming only the routed specialist no longer
+  switches the mechanism on with nothing to say. The preamble no longer
+  carries the speaker line; the base does. The runner requires the base and
+  tells each specialist whom it may ask (the roster less its own chain), the
+  count, and that the next level cannot hand on; a second-level specialist
+  is told it cannot hand on at all. The root's own instructions are
+  byte-identical to before for every business, on the switch or off
+  (checked by digest across five fixtures when the prompt was split).
+- **Loopback only (M6).** `/v1/handoff*` now also require a loopback socket
+  address and no `Fly-Client-IP` or `X-Forwarded-For`. Checked first: the
+  plugin calls `JENTERA_RUNNER_URL`, which nothing sets on a sprite
+  (`bootstrap-runtime.sh`, `hermes-service.sh`, `hermes.env`), so its
+  default `http://127.0.0.1:8080` holds.
+- **Names come from the roster (M7, M1).** Step tags, approval titles and
+  the live status take the business's own name for a specialist first and
+  the runner's only as a fallback; a key on neither reads "a specialist"
+  (app: "A specialist" / "Pakar"), never the raw key. An `unknown_specialist`
+  refusal sends no status line.
+- **The chip names only who worked (M2).** Refused hand-offs stay in the
+  popover and leave the chip.
+- **The bundle pin check names the unreleased file (M9).** A plain deploy
+  after merge still fails `check-bundle-pin`, now with the asset the pinned
+  commit lacks and `ship-runtime.sh` as the fix, instead of "fetch the
+  commit".
+- **A colleague cannot read a private chat's hand-offs (M11)**: a test of
+  the coordination route's 404, which the code already did.
+
+Deviations this wave records rather than fixes:
+
+- **The control plane does not re-check the limits when it records
+  hand-off events (M5).** The spec says it does. The Worker bounds the
+  depth (1..2), the code and the name of each event, and records every
+  stage; the runner is the one place the limits hold. A sixth `requested`
+  would be recorded, not refused.
+- **Refused requests now count (M4)**, as the spec says; until this wave
+  the engine did not, and the rulings above did not record that.
+- **A failed specialist's usage is not measured.** Hermes writes no usage
+  for a failed run, in its event or its status record. The runner logs
+  `runner.handoff.usage_unmeasured` and adds nothing. The Worker's only
+  conservative rule charges the reserved ceiling (100k in, 25k out) when a
+  task reports no usage at all; there is no partial-usage rule, and forcing
+  the ceiling could charge less than the measured root alone, so none was
+  invented.
