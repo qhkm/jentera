@@ -7,7 +7,6 @@ import { ConversationList } from '@/components/ChatWorkspace';
 import { WorkspaceModeSwitch } from '@/components/WorkspaceModeSwitch';
 import { ToastProvider } from '@/components/Toast';
 import Dashboard from '@/routes/Dashboard';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
@@ -37,7 +36,7 @@ async function mount(children: ReactNode, repo = new LocalRepository(), entry = 
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
-              <ActivityProvider>{children}</ActivityProvider>
+              {children}
             </ToastProvider>
           </I18nProvider>
         </RepositoryProvider>

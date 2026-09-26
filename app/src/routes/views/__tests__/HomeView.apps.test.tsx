@@ -6,7 +6,6 @@ import { MemoryRouter } from 'react-router';
 import HomeView from '../HomeView';
 import BookingsList from '../apps/BookingsList';
 import { ToastProvider } from '@/components/Toast';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useConnections } from '@/hooks/useConnections';
 import { I18nProvider } from '@/i18n/I18nProvider';
@@ -57,11 +56,11 @@ async function mount(api: AppsApi | null, options: { activityFails?: boolean; sc
   const onOpenApp = vi.fn();
   // The repository and the apps list load on microtasks; renderWithQuery flushes them inside act.
   await renderWithQuery(<MemoryRouter><SignedInProvider value account="home-apps-test"><RepositoryProvider repository={repo}>
-    <I18nProvider><ToastProvider><ActivityProvider><AppsProvider api={api}>
+    <I18nProvider><ToastProvider><AppsProvider api={api}>
       {options.screens && api
         ? <Screens api={api} onNavigate={onNavigate} onOpenApp={onOpenApp} />
         : <Harness onNavigate={onNavigate} onOpenApp={onOpenApp} />}
-    </AppsProvider></ActivityProvider></ToastProvider></I18nProvider>
+    </AppsProvider></ToastProvider></I18nProvider>
   </RepositoryProvider></SignedInProvider></MemoryRouter>);
   return { onNavigate, onOpenApp, user: userEvent.setup() };
 }

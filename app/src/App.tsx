@@ -8,7 +8,6 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
 import LandingV3 from '@/routes/LandingV3';
 import SignIn from '@/routes/SignIn';
@@ -174,12 +173,7 @@ export function AppRoutes() {
                  at /signin, not part-way through the demo. */
                 <RequireAuth>
                   <RequireOnboarded>
-                    {/* One activity fetch for the whole dashboard. The
-                      sidebar, Home and Activity all read it, and all
-                      three settle at the same moment. */}
-                    <ActivityProvider>
-                      <Dashboard />
-                    </ActivityProvider>
+                    <Dashboard />
                   </RequireOnboarded>
                 </RequireAuth>
               }

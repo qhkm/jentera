@@ -9,7 +9,6 @@ import { ChatHistory } from '@/components/ChatHistory';
 import { ToastProvider } from '@/components/Toast';
 import { Tabs } from '@/components/Tabs';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { useBusiness } from '@/hooks/useBusiness';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -20,10 +19,11 @@ import type { AskSession } from '@/hooks/useAsk';
 import MyBusinessView, { type BizTab } from '@/routes/views/MyBusinessView';
 import ActivityView from '@/routes/views/ActivityView';
 import { KEYS } from '@/lib/storage';
+import { TestQueryScope } from '@/test-support/query';
 
 function mount(children: ReactNode, { repo = new LocalRepository(), signedIn = true, email = null as string | null } = {}) {
   return render(
-    <SignedInProvider value={signedIn} email={email}>
+    <TestQueryScope><SignedInProvider value={signedIn} email={email}>
       <RepositoryProvider repository={repo}>
         <I18nProvider>
           <ToastProvider>
@@ -31,7 +31,7 @@ function mount(children: ReactNode, { repo = new LocalRepository(), signedIn = t
           </ToastProvider>
         </I18nProvider>
       </RepositoryProvider>
-    </SignedInProvider>,
+    </SignedInProvider></TestQueryScope>,
   );
 }
 
@@ -202,12 +202,7 @@ describe('real work history', () => {
     function Harness() {
       return <ActivityView b={useBusiness()} />;
     }
-    mount(
-      <ActivityProvider>
-        <Harness />
-      </ActivityProvider>,
-      { repo },
-    );
+    mount(<Harness />, { repo });
     await userEvent.type(await screen.findByRole('searchbox'), 'no such task');
     expect(screen.getByText('Nothing matches')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send it' })).toBeInTheDocument();

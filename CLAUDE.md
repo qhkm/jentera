@@ -148,8 +148,14 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   reaches it. Goals joined it on 26 September (`hooks/useGoals.ts`, key
   `['biz', id, 'goals']`: Home's card and the Goals screen share one read;
   an edit re-reads it, because the server's answer carries no recounted
-  progress). Activity, Routines, Connections and shared chats still fetch
-  by hand until phase 2 reaches them.
+  progress). Activity joined the same day (`hooks/useActivity.tsx`, key
+  `['biz', id, 'activity']`); the cache replaced `ActivityProvider` as the
+  one shared read, a return to the app reads it again, and `reload()`
+  refreshes in the background with the figures still on screen — until
+  then it emptied the brief and the Activity list after every chat
+  answer, approval and review. Its `real / pending / error / demo` answer
+  is unchanged, and a failed refresh stays `real`. Routines, Connections
+  and shared chats still fetch by hand until phase 2 reaches them.
 
 ## Native shell (`mobile/`)
 

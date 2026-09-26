@@ -1,6 +1,6 @@
 import { act, render, type RenderResult } from '@testing-library/react';
 import type { QueryClient } from '@tanstack/react-query';
-import type { ReactElement, ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { createQueryClient } from '@/lib/query/client';
 import { QueryScope } from '@/lib/query/scope';
@@ -19,6 +19,14 @@ export function createTestQueryClient(): QueryClient {
     mutations: { ...defaults.mutations, retry: false },
   });
   return client;
+}
+
+/** A fresh cache, as the gate gives every signed-in page, for a test that
+    renders its own tree. Signed in without one, the shared reads
+    (activity, goals) stay inert, which production never does. */
+export function TestQueryScope({ children }: { children: ReactNode }) {
+  const [client] = useState(createTestQueryClient);
+  return <QueryScope client={client} businessId={TEST_BUSINESS_ID}>{children}</QueryScope>;
 }
 
 export interface RenderWithQueryOptions {

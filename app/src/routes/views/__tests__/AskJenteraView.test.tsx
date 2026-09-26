@@ -4,7 +4,6 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import AskJenteraView from '@/routes/views/AskJenteraView';
 import { AskReply } from '@/components/AskReply';
 import { ToastProvider } from '@/components/Toast';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { useBusiness } from '@/hooks/useBusiness';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -56,7 +55,7 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
-              <ActivityProvider>{children}</ActivityProvider>
+              {children}
             </ToastProvider>
           </I18nProvider>
         </RepositoryProvider>

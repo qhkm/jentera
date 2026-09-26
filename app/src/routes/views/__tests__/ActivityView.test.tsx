@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import ActivityView from '@/routes/views/ActivityView';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
@@ -10,6 +9,7 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { useBusiness } from '@/hooks/useBusiness';
 import type { Activity, WorkSummary } from '@/lib/repo';
+import { TestQueryScope } from '@/test-support/query';
 
 const done = (over: Partial<WorkSummary>): WorkSummary => ({
   id: 'w', runId: null, objective: 'Work', outcome: 'Done.', status: 'completed', function: 'reply',
@@ -31,17 +31,15 @@ async function mount(activity: Activity, teamVersion?: number) {
   const onOpenTask = vi.fn();
   render(
     <MemoryRouter>
-      <SignedInProvider value teamVersion={teamVersion}>
+      <TestQueryScope><SignedInProvider value teamVersion={teamVersion}>
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
-              <ActivityProvider>
-                <Harness onOpenTask={onOpenTask} />
-              </ActivityProvider>
+              <Harness onOpenTask={onOpenTask} />
             </ToastProvider>
           </I18nProvider>
         </RepositoryProvider>
-      </SignedInProvider>
+      </SignedInProvider></TestQueryScope>
     </MemoryRouter>,
   );
   return onOpenTask;

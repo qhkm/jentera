@@ -16,12 +16,13 @@
    ============================================================ */
 
 import { describe, expect, it, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { ActivityProvider, useActivity } from '@/hooks/useActivity';
-import { RepositoryProvider } from '@/lib/repo/context';
+import { screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { useActivity } from '@/hooks/useActivity';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
 import type { Activity } from '@/lib/repo';
+import { renderWithQuery } from '@/test-support/query';
 
 const EMPTY: Activity = {
   counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 0 },
@@ -57,18 +58,14 @@ function Probe({ id = 'mode' }: { id?: string }) {
 
 beforeEach(() => localStorage.clear());
 
+/** A page as the gate builds it: signed in means a cache above it. */
+const page = (repo: LocalRepository, signedIn: boolean, children: ReactNode) =>
+  renderWithQuery(<SignedInProvider value={signedIn}>{children}</SignedInProvider>, { repository: repo });
+
 describe('what mode says while the answer is in flight', () => {
   it('is pending, not demo, for a signed-in owner', async () => {
     const { repo, answer } = serverRepo();
-    render(
-      <SignedInProvider value>
-        <RepositoryProvider repository={repo}>
-          <ActivityProvider>
-            <Probe />
-          </ActivityProvider>
-        </RepositoryProvider>
-      </SignedInProvider>,
-    );
+    await page(repo, true, <><Probe /></>);
 
     /* The whole bug in one assertion. `demo` here is what put a
        stranger's numbers on the screen. */
@@ -87,29 +84,13 @@ describe('what mode says while the answer is in flight', () => {
       throw new Error('offline');
     };
 
-    render(
-      <SignedInProvider value>
-        <RepositoryProvider repository={repo}>
-          <ActivityProvider>
-            <Probe />
-          </ActivityProvider>
-        </RepositoryProvider>
-      </SignedInProvider>,
-    );
+    await page(repo, true, <><Probe /></>);
 
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('error'));
   });
 
   it('is demo when nobody is signed in', async () => {
-    render(
-      <SignedInProvider value={false}>
-        <RepositoryProvider repository={new LocalRepository()}>
-          <ActivityProvider>
-            <Probe />
-          </ActivityProvider>
-        </RepositoryProvider>
-      </SignedInProvider>,
-    );
+    await page(new LocalRepository(), false, <Probe />);
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('demo'));
   });
 });
@@ -119,16 +100,7 @@ describe('one fetch for the whole dashboard', () => {
     /* Dashboard and Home both called the hook. Two requests, and two
        independent moments of flipping out of the illustration. */
     const { repo, calls, answer } = serverRepo();
-    render(
-      <SignedInProvider value>
-        <RepositoryProvider repository={repo}>
-          <ActivityProvider>
-            <Probe id="one" />
-            <Probe id="two" />
-          </ActivityProvider>
-        </RepositoryProvider>
-      </SignedInProvider>,
-    );
+    await page(repo, true, <><Probe id="one" /> <Probe id="two" /></>);
 
     /* Wait on the request, not on `pending`. `pending` is already true
        on the first render — before the effect fires — so waiting for it
@@ -145,21 +117,14 @@ describe('one fetch for the whole dashboard', () => {
     expect(calls.activity).toBe(1);
   });
 
-  it('still works for a consumer mounted outside the provider', async () => {
-    /* A missing provider should cost a duplicate request, not a blank
-       screen or a thrown error. */
+  it('shares that one fetch between screens mounted apart', async () => {
+    /* The cache is the sharing now, not a provider: two screens that are
+       not in one tree still make one request. */
     const { repo, calls, answer } = serverRepo();
-    render(
-      <SignedInProvider value>
-        <RepositoryProvider repository={repo}>
-          <Probe />
-        </RepositoryProvider>
-      </SignedInProvider>,
-    );
-
+    await page(repo, true, <><section><Probe id="one" /></section><aside><Probe id="two" /></aside></>);
     await waitFor(() => expect(calls.activity).toBe(1));
-    expect(screen.getByTestId('mode')).toHaveTextContent('pending');
     answer();
-    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('real'));
+    await waitFor(() => expect(screen.getByTestId('two')).toHaveTextContent('real'));
+    expect(calls.activity).toBe(1);
   });
 });

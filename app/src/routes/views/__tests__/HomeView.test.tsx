@@ -16,7 +16,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import HomeView from '@/routes/views/HomeView';
-import { ActivityProvider } from '@/hooks/useActivity';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
@@ -26,6 +25,7 @@ import { useBusiness } from '@/hooks/useBusiness';
 import type { Activity, Connection } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import type { ChatPreview } from '@/hooks/useChatPreview';
+import { TestQueryScope } from '@/test-support/query';
 
 const NOTHING_YET: Activity = {
   counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 1 },
@@ -84,17 +84,15 @@ async function mount(signedIn: boolean, activity: Activity | null, rows: Connect
 
   return render(
     <MemoryRouter>
-      <SignedInProvider value={signedIn}>
+      <TestQueryScope><SignedInProvider value={signedIn}>
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
-              <ActivityProvider>
-                <Harness connections={connectionState(rows, signedIn)} onNavigate={onNavigate} />
-              </ActivityProvider>
+              <Harness connections={connectionState(rows, signedIn)} onNavigate={onNavigate} />
             </ToastProvider>
           </I18nProvider>
         </RepositoryProvider>
-      </SignedInProvider>
+      </SignedInProvider></TestQueryScope>
     </MemoryRouter>,
   );
 }
@@ -142,9 +140,9 @@ describe('a business that has genuinely done nothing', () => {
     const repo = new LocalRepository();
     repo.activity = async () => NOTHING_YET;
     const renderHome = (preview: ChatPreview | null) => render(
-      <MemoryRouter><SignedInProvider value><RepositoryProvider repository={repo}><I18nProvider><ToastProvider><ActivityProvider>
+      <MemoryRouter><TestQueryScope><SignedInProvider value><RepositoryProvider repository={repo}><I18nProvider><ToastProvider>
         <Harness preview={preview} />
-      </ActivityProvider></ToastProvider></I18nProvider></RepositoryProvider></SignedInProvider></MemoryRouter>,
+      </ToastProvider></I18nProvider></RepositoryProvider></SignedInProvider></TestQueryScope></MemoryRouter>,
     );
     const free = renderHome({ limit: 10, used: 4, remaining: 6 });
     expect(await screen.findByRole('region', { name: 'Become an early member.' })).toHaveTextContent('6 free chats left');
@@ -184,17 +182,15 @@ describe('while the figures are still loading', () => {
 
     render(
       <MemoryRouter>
-        <SignedInProvider value>
+        <TestQueryScope><SignedInProvider value>
           <RepositoryProvider repository={repo}>
             <I18nProvider>
               <ToastProvider>
-                <ActivityProvider>
-                  <Harness />
-                </ActivityProvider>
+                <Harness />
               </ToastProvider>
             </I18nProvider>
           </RepositoryProvider>
-        </SignedInProvider>
+        </SignedInProvider></TestQueryScope>
       </MemoryRouter>,
     );
 
