@@ -94,6 +94,24 @@ export async function claimTelegramAlbumReply(
   }
 }
 
+/** Whether this voice note may speak: its echo or its one-line reply. The
+    inline slice and the queued safety net can both hear a note long enough to
+    outlast the 30 s delay between them; one of them answers. Shares the album
+    limiter (one per key per 60 s) under its own key prefix. Fails open. */
+export async function claimTelegramVoiceReply(
+  env: Env,
+  connectionId: string,
+  chatId: number,
+  messageId: number,
+): Promise<boolean> {
+  try {
+    const key = await opaqueKey(env, `telegram-voice:${connectionId}:${chatId}:${messageId}`);
+    return (await env.TELEGRAM_ALBUM_REPLY.limit({ key })).success;
+  } catch {
+    return true;
+  }
+}
+
 function response(
   status: number,
   err: string,

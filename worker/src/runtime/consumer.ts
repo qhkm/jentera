@@ -78,6 +78,7 @@ import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { applyRuntimeApprovalDecision } from './approvals';
 import { CREDIT_CAP_NOTICE, failureNotice, telegramFailureNotice } from './failure-notice';
+import { hearTelegramVoice, withVoiceNote } from './telegram-voice';
 import { createWebProgress } from './web-progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
@@ -689,6 +690,14 @@ export async function handleRuntimeQueueMessage(
 
   const dedupeKey = `telegram:${message.connectionId}:${message.incoming.chatId}:` +
     `${message.incoming.messageId}`;
+  /* A voice note is heard before admission, outside any transaction: the
+     transcript is the request from here on, as though it had been typed. */
+  if (message.incoming.voice) {
+    const heard = await hearTelegramVoice(env, message, dedupeKey);
+    if (heard.kind === 'answered') return { action: 'ack', reason: 'completed' };
+    if (heard.kind === 'heard') message = heard.message;
+    telegramLatency('voice_heard', message.requestedAtMs, { outcome: heard.kind });
+  }
   let speculativeBubble: Promise<{ messageId: number } | null> | undefined;
   let speculativeStatus: string | undefined;
   let speculativeToken: TelegramCredential | undefined;
@@ -749,7 +758,10 @@ export async function handleRuntimeQueueMessage(
       const prepared = prepareHermesAgent(
         /* The note goes to the agent only. The run, the task's `telegram`
            block, retrieval and specialist routing all keep the caption. */
-        withUnseenMediaNote(withoutModeCommand(message.incoming.text), message.incoming.unseen),
+        withUnseenMediaNote(
+          withVoiceNote(withoutModeCommand(message.incoming.text), message.incoming.voice),
+          message.incoming.unseen,
+        ),
         facts,
         work,
         new Date(),
@@ -767,6 +779,7 @@ export async function handleRuntimeQueueMessage(
           from: message.incoming.from,
           question: message.incoming.text,
           sessionId: telegramSessionId,
+          ...(message.incoming.voice ? { input: 'voice', durationS: message.incoming.voice.durationS } : {}),
         },
         runtime: 'hermes-sprite',
         model,
