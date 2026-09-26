@@ -851,15 +851,19 @@ export async function handleIncoming(
        (see inline-slice.ts): admission, dispatch and the first slice of the
        relay run here under waitUntil, and the queue gets the intake with a
        delay as the safety net. Without a context the queue does it all. */
-    if (ctx) {
-      ctx.waitUntil(runInlineSlice(
+    /* A voice note skips the inline slice: hearing it can outlast the 30 s
+       waitUntil gives that slice, which would then die mid-lease and leave
+       the reply to a dead-owner recovery. The queue has no such limit. */
+    const inlineSlice = ctx && !message.voice ? ctx : undefined;
+    if (inlineSlice) {
+      inlineSlice.waitUntil(runInlineSlice(
         env,
         telegramIntakeMessage(businessId, connectionId, message, requestedAtMs),
         inline,
       ));
     }
     await signalTelegramIntake(env, businessId, connectionId, message, requestedAtMs, {
-      delaySeconds: ctx ? INLINE_SAFETY_NET_SECONDS : 0,
+      delaySeconds: inlineSlice ? INLINE_SAFETY_NET_SECONDS : 0,
     });
     return;
   }

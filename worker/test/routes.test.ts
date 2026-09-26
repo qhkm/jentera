@@ -1282,6 +1282,33 @@ describe('connections', () => {
     expect(JSON.parse(String(sends[0][1]?.body))).toMatchObject({ chat_id: 42, text: VOICE_REPLIES.tooLong });
   });
 
+  /* Review 26 Sep: hearing a note can take longer than the 30 s the webhook's
+     waitUntil gives the inline first slice, which then dies mid-lease. A voice
+     note goes to the queue at once, where nothing cuts it off. */
+  it('sends a voice note straight to the queue, without the inline first slice', async () => {
+    vi.stubGlobal('fetch', fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }))));
+    const paired = await pairTelegramChat(42);
+    const queued: { message: unknown; delaySeconds?: number }[] = [];
+    env = automaticRuntimeEnv(async (message, options) => { queued.push({ message, delaySeconds: options?.delaySeconds }); });
+    const background: Promise<unknown>[] = [];
+    const ctx = { waitUntil(promise: Promise<unknown>) { background.push(promise.catch(() => undefined)); } };
+    const owner = { chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'Owner' } };
+
+    await telegramUpdate(paired.connectionId, paired.secret, { ...owner, message_id: 60, text: 'Are we open Sunday?' }, ctx);
+    expect(background).toHaveLength(1);
+    expect(queued[0].delaySeconds).toBe(30);
+
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      ...owner, message_id: 61, voice: { file_id: 'AwAC', file_unique_id: 'AgAD', duration: 60 },
+    }, ctx);
+    expect(background).toHaveLength(1);
+    expect(queued).toHaveLength(2);
+    expect(queued[1]).toMatchObject({ message: { incoming: { messageId: 61, voice: { fileId: 'AwAC' } } } });
+    expect(queued[1].delaySeconds).toBeUndefined();
+    await Promise.all(background);
+  });
+
   it('runs a captioned photo as its caption, flagged as unseen', async () => {
     const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
@@ -1634,7 +1661,7 @@ function oncePerKey(): Env['TELEGRAM_ALBUM_REPLY'] {
   };
 }
 
-function automaticRuntimeEnv(send: (message: unknown) => Promise<void>): Env {
+function automaticRuntimeEnv(send: (message: unknown, options?: { delaySeconds?: number }) => Promise<void>): Env {
   return testEnv({
     RUNTIME_RELEASE: '2026.08.28-8',
     RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
