@@ -2,6 +2,40 @@ import { describe, expect, it } from 'vitest';
 import { HANDOFF_PREAMBLE, handoffEnabledFor, handoffTaskField } from '../src/handoff';
 import { runPayload } from '../src/runtime/run-task';
 import { testEnv } from './harness';
+import { handoffInstructions } from '../src/handoff';
+import { prepareHermesAgent } from '../src/ask';
+import { specialistRunInstructions, type SpecialistDefinition } from '../src/specialists';
+
+const specialist = (profile: string, name: string, description: string): SpecialistDefinition =>
+  ({ id: profile, profile, name, description, instructions: '', enabled: true });
+const ROSTER = [
+  specialist('records', 'Finance and records', 'Invoices and cash flow.'),
+  specialist('growth', 'Growth and marketing', 'Campaigns.'),
+];
+
+describe('what the agents are told', () => {
+  it('lists the other specialists by key and asks for credit by name', () => {
+    const text = handoffInstructions(ROSTER, 'growth');
+    expect(text).toContain('ask_specialist');
+    expect(text).toContain('- records: Finance and records — Invoices and cash flow.');
+    expect(text).not.toContain('- growth:');
+    expect(text).toContain('Never present a missing part as done');
+    expect(handoffInstructions([ROSTER[1]], 'growth')).toBe('');
+  });
+
+  it('lets a routed specialist credit a colleague only when hand-offs are on', () => {
+    expect(specialistRunInstructions(ROSTER[1])).toContain('do not expose internal profile names, routing, delegation, or handoffs');
+    expect(specialistRunInstructions(ROSTER[1], { handoff: true })).toContain('say which part by their name');
+    expect(specialistRunInstructions(ROSTER[1], { handoff: true })).not.toContain('delegation, or handoffs');
+  });
+
+  it('adds hand-off instructions to a turn only when given a roster', () => {
+    const at = new Date('2026-09-26T00:00:00Z');
+    expect(prepareHermesAgent('Reconcile last month', [], [], at).instructions).not.toContain('ask_specialist');
+    expect(prepareHermesAgent('Reconcile last month', [], [], at, undefined, undefined, 'deep', ROSTER).instructions)
+      .toContain('ask_specialist');
+  });
+});
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';

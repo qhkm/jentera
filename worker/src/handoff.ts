@@ -8,6 +8,7 @@
    ============================================================ */
 
 import type { Env } from './env';
+import type { SpecialistDefinition } from './specialists';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,4 +41,20 @@ export function handoffTaskField(speakerText?: string): HandoffTaskField {
     ...HANDOFF_LIMITS,
     preamble: speakerText ? `${HANDOFF_PREAMBLE}\n\n${speakerText}` : HANDOFF_PREAMBLE,
   };
+}
+
+/** What a turn that may hand off is told: who else is on the team and how to credit them. */
+export function handoffInstructions(
+  roster: readonly Pick<SpecialistDefinition, 'profile' | 'name' | 'description'>[],
+  self?: string,
+): string {
+  const others = roster.filter((entry) => entry.profile !== self);
+  if (!others.length) return '';
+  const list = others.map((entry) => `- ${entry.profile}: ${entry.name} — ${entry.description}`).join('\n');
+  return 'You can hand part of this task to a specialist with the ask_specialist tool: give their ' +
+    'profile key and a brief of exactly what you need. Do it only when that part clearly sits in ' +
+    `their remit, and one at a time. Specialists on this team:\n${list}\n` +
+    'Wait for their answer, then write one reply to the owner that says who did which part, by ' +
+    'name (for example "Finance and records checked Bukku: …"). If a specialist could not finish, ' +
+    'say which part is missing. Never present a missing part as done.';
 }

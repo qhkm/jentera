@@ -36,8 +36,10 @@ import {
   prepareHermesAgent,
   retrieve,
   retrieveHermesContext,
+  speakerInstructions,
   type Speaker,
 } from '../ask';
+import { handoffEnabledFor, handoffTaskField } from '../handoff';
 import { getRuntime } from '../agent-runtime';
 import {
   enqueueRuntimeTask,
@@ -868,18 +870,20 @@ async function startDurableAsk(
 
   /* Shared retrieval and prompt construction with Telegram; web chats use
      the speaker's chosen bot for new sessions and retain it on follow-ups. */
-  const { facts, work, specialist } = await withTenant(env, businessId, async (tx) => {
+  const { facts, work, specialist, roster } = await withTenant(env, businessId, async (tx) => {
     const context = await retrieveHermesContext(tx, question);
     const specialists = await listSpecialists(tx, { enabledOnly: true });
     const preference = await botPreference(tx, userId);
-    return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists, botProfile ?? preference.defaultBotProfile) };
+    return { ...context, roster: specialists, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists, botProfile ?? preference.defaultBotProfile) };
   });
   /* Quick by default, as on Telegram; a typed /deep or /research opts in
      to the research loop. Chat was hard-wired to deep until 2026-09-10 and
      every web message paid for it. */
   const responseMode = requestedMode ?? responseModeFor(question);
+  /* Quick replies never hand off: a hand-off is work, and a quick turn has two iterations. */
+  const handoffRoster = responseMode !== 'quick' && handoffEnabledFor(env, businessId) ? roster : undefined;
   const prepared = prepareHermesAgent(
-    agentQuestion, facts, work, new Date(), specialist, speaker, responseMode,
+    agentQuestion, facts, work, new Date(), specialist, speaker, responseMode, handoffRoster,
   );
   const model = modelForResponseMode(env, responseMode, businessId);
   const dedupeKey = `ask:${requestId}`;
@@ -929,6 +933,7 @@ async function startDurableAsk(
         factKeys: prepared.usedKeys,
         grounded: prepared.grounded,
         responseMode,
+        ...(handoffRoster?.length ? { handoff: handoffTaskField(speaker ? speakerInstructions(speaker) : undefined) } : {}),
         model,
         requestedAtMs: Date.now(),
         ...(selectedSkills.length ? { selectedSkills } : {}),

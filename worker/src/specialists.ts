@@ -83,14 +83,24 @@ export function specialistProfileForRequest(
   return scores[0].specialist;
 }
 
-export function specialistRunInstructions(specialist: SpecialistDefinition): string {
+export function specialistRunInstructions(
+  specialist: SpecialistDefinition,
+  options: { handoff?: boolean } = {},
+): string {
   return `Internal assignment: the Chief of Staff has routed this request to the ${specialist.name} ` +
     `specialist profile. Apply that profile's durable expertise and memory. Return one coherent, ` +
-    `owner-facing Jentera answer; do not expose internal profile names, routing, delegation, or ` +
-    `handoffs. Your business-defined remit is: ${specialist.description}\n` +
+    (options.handoff
+      ? `owner-facing Jentera answer; do not expose internal profile names or routing, but when ` +
+        `another specialist did part of the work through ask_specialist, say which part by their name. `
+      : `owner-facing Jentera answer; do not expose internal profile names, routing, delegation, or ` +
+        `handoffs. `) +
+    `Your business-defined remit is: ${specialist.description}\n` +
     `${specialist.instructions ? `Business-owner instructions: ${specialist.instructions}\n` : ''}` +
-    `If the request materially crosses another domain, state the dependency plainly without ` +
-    `pretending it was completed.`;
+    (options.handoff
+      ? `If the request materially crosses another domain, hand that part to its specialist, or ` +
+        `state the dependency plainly without pretending it was completed.`
+      : `If the request materially crosses another domain, state the dependency plainly without ` +
+        `pretending it was completed.`);
 }
 
 /** How long a chat keeps the specialist that last answered in it. Hermes

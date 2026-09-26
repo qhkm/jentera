@@ -111,6 +111,7 @@ import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '..
 import { modelForResponseMode, responseModeFor, withoutModeCommand } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
+import { handoffEnabledFor, handoffTaskField } from '../handoff';
 import { recordDelegation } from '../coordination';
 import {
   notifyOwnersApprovalRequested,
@@ -759,13 +760,17 @@ export async function handleRuntimeQueueMessage(
       }
       const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
       const telegramSessionId = `telegram:${message.businessId}:${message.incoming.chatId}`;
+      const roster = await listSpecialists(tx, { enabledOnly: true });
       const specialist = await specialistForTurn(
         tx,
         message.businessId,
         telegramSessionId,
         message.incoming.text,
-        await listSpecialists(tx, { enabledOnly: true }),
+        roster,
       );
+      const handoffRoster = responseMode !== 'quick' && handoffEnabledFor(env, message.businessId)
+        ? roster
+        : undefined;
       const prepared = prepareHermesAgent(
         /* The note goes to the agent only. The run, the task's `telegram`
            block, retrieval and specialist routing all keep the caption. */
@@ -779,6 +784,7 @@ export async function handleRuntimeQueueMessage(
         specialist,
         undefined,
         responseMode,
+        handoffRoster,
       );
       telegramLatency('admission_context_ready', message.requestedAtMs);
       const run = await startRun(tx, message.businessId, {
@@ -815,6 +821,7 @@ export async function handleRuntimeQueueMessage(
           factKeys: prepared.usedKeys,
           grounded: prepared.grounded,
           responseMode,
+          ...(handoffRoster?.length ? { handoff: handoffTaskField() } : {}),
           model,
           requestedAtMs: message.requestedAtMs,
           telegram: {

@@ -18,6 +18,7 @@
 import type postgres from 'postgres';
 import type { Env } from './env';
 import { specialistRunInstructions, type SpecialistDefinition } from './specialists';
+import { handoffInstructions } from './handoff';
 import { MODEL } from './ingest';
 import {
   RUNNER_INPUT_MAX,
@@ -451,6 +452,7 @@ export function prepareHermesAgent(
   specialist?: SpecialistDefinition,
   speaker?: Speaker,
   responseMode?: ResponseMode,
+  handoffRoster?: readonly SpecialistDefinition[],
 ): { instructions: string; input: string; usedKeys: string[]; grounded: boolean } {
   const recent = work.length === 0
     ? '(nothing yet)'
@@ -460,9 +462,11 @@ export function prepareHermesAgent(
         .join('\n');
   /* Stable policy first; the precise clock changes every request and must not
      invalidate the reusable prefix before the business context. */
+  const handoff = handoffRoster?.length ? handoffInstructions(handoffRoster, specialist?.profile) : '';
   const preamble = HERMES_AGENT_PROMPT +
-    `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
+    `${specialist ? `\n\n${specialistRunInstructions(specialist, { handoff: Boolean(handoff) })}` : ''}` +
     `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
+    `${handoff ? `\n\n${handoff}` : ''}` +
     `${responseMode === 'quick' ? `\n\n${QUICK_TURN_PROMPT}` : ''}` +
     '\n\n';
   const clock =
