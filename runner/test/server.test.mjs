@@ -1095,6 +1095,19 @@ test('hand-off routes answer only a caller on this machine, never one relayed to
   assert.equal(isLoopbackCaller(socket(undefined)), false);
 });
 
+test('a task start from a Worker before the base still runs, without hand-offs', async () => {
+  const release = await withHandoffs();
+  try {
+    const { base: _base, ...older } = HANDOFF;
+    assert.equal((await start(TASK, { handoff: older })).status, 202);
+    const refused = await (await handOff({ runId: 'run-1', specialist: 'records', brief: 'Which invoices?' })).json();
+    assert.equal(refused.code, 'unavailable');
+    assert.ok(!hermesPaths.includes('/p/records/v1/runs'));
+  } finally {
+    release();
+  }
+});
+
 test('a specialist works inside the task that asked for it', async () => {
   const release = await withHandoffs();
   hermesStatus = 'completed';

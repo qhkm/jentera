@@ -71,9 +71,11 @@ export function handoffFieldProblem(value) {
   if (typeof value.preamble !== 'string' || !value.preamble.trim() || value.preamble.length > 4_000) {
     return 'handoff.preamble must contain 1 to 4000 characters';
   }
-  /* Required, not optional: a specialist started without it would work
-     without Jentera's rules, the speaker or the business's facts. */
-  if (typeof value.base !== 'string' || !value.base.trim() || value.base.length > HANDOFF_BASE_MAX) {
+  /* Absent is allowed and means no hand-offs (see register): a Worker from
+     before the base, after a rollback, must not have every task refused.
+     Present, it must be sound. */
+  if (value.base !== undefined &&
+      (typeof value.base !== 'string' || !value.base.trim() || value.base.length > HANDOFF_BASE_MAX)) {
     return `handoff.base must contain 1 to ${HANDOFF_BASE_MAX} characters`;
   }
   return null;
@@ -193,7 +195,10 @@ export class HandoffEngine {
     }
     this.tasks.clear();
     this.runs.clear();
-    if (!handoff) return;
+    /* No base, no hand-offs: a specialist started without it would work
+       without Jentera's rules, the speaker or the business's facts. The
+       task itself runs; its ask_specialist calls answer `unavailable`. */
+    if (!handoff?.base) return;
     /* The task's own controller: stopping the task aborts this, which cascades
        into every live run's combined signal below it, whatever its depth. */
     const controller = new AbortController();

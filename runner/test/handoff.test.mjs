@@ -134,6 +134,13 @@ test('a task started without hand-off limits cannot hand off', async () => {
   assert.equal(fake.calls.length, 0);
 });
 
+test('a task started without the base cannot hand off, rather than hand off without the rules', async () => {
+  const { handoffs, fake } = engine(() => done('ok'));
+  handoffs.register('task-2', { rootRunId: 'run_old', handoff: { ...LIMITS, base: undefined } });
+  assert.equal((await handoffs.request(ask('records', 'x', 'run_old'))).code, 'unavailable');
+  assert.equal(fake.calls.length, 0);
+});
+
 test('lets a specialist ask one more, but not a third level, and never back up its chain', async () => {
   const seen = {};
   const { handoffs, fake } = engine(() => []);
@@ -218,8 +225,10 @@ test('checks what a task start and a tool request may carry', () => {
   assert.equal(handoffFieldProblem(LIMITS), null);
   assert.match(handoffFieldProblem({ ...LIMITS, maxDepth: 3 }), /maxDepth/);
   assert.match(handoffFieldProblem({ ...LIMITS, preamble: '' }), /preamble/);
-  assert.match(handoffFieldProblem({ ...LIMITS, base: undefined }), /base/);
+  assert.match(handoffFieldProblem({ ...LIMITS, base: '' }), /base/);
   assert.match(handoffFieldProblem({ ...LIMITS, base: 'x'.repeat(20_001) }), /base/);
+  /* Absent is a start from a Worker before the base: it runs, without hand-offs. */
+  assert.equal(handoffFieldProblem({ ...LIMITS, base: undefined }), null);
   assert.equal(handoffRequestProblem({ runId: 'run_1', specialist: 'records', brief: 'x' }), null);
   assert.match(handoffRequestProblem({ runId: 'run_1', specialist: 'records', brief: 'x'.repeat(2_001) }), /brief/);
   assert.match(handoffRequestProblem({ runId: '../etc', specialist: 'records', brief: 'x' }), /runId/);
