@@ -14,7 +14,6 @@ import {
   unreadableReply,
   VOICE_MAX_BYTES,
   VOICE_REPLIES,
-  voiceEcho,
 } from '../connectors/telegram';
 import { claimTelegramVoiceReply } from '../request-guard';
 import { isVaultTelegramCredential } from '../vault/telegram';
@@ -23,7 +22,7 @@ import type { TelegramIntakeQueueMessage } from './consumer';
 import { runtimeTaskByDedupeKey } from './tasks';
 
 export type VoiceIntake =
-  | { kind: 'heard'; message: TelegramIntakeQueueMessage }
+  | { kind: 'heard'; message: TelegramIntakeQueueMessage; transcript: string }
   | { kind: 'admitted' }
   | { kind: 'answered' };
 
@@ -68,9 +67,11 @@ export async function hearTelegramVoice(
     await say(VOICE_REPLIES.unintelligible);
     return { kind: 'answered' };
   }
-  await say(voiceEcho(heard.text));
+  /* No echo here: admission sends it once it has created the run, so a retry
+     or a second path cannot show it twice. */
   return {
     kind: 'heard',
+    transcript: heard.text,
     message: { ...message, incoming: { ...incoming, text: voiceRequest(heard.text, incoming.text) } },
   };
 }

@@ -95,6 +95,7 @@ import {
   sendMessage,
   sendTyping,
   TelegramLiveStream,
+  voiceEcho,
   withUnseenMediaNote,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
@@ -692,10 +693,14 @@ export async function handleRuntimeQueueMessage(
     `${message.incoming.messageId}`;
   /* A voice note is heard before admission, outside any transaction: the
      transcript is the request from here on, as though it had been typed. */
+  let voiceTranscript: string | undefined;
   if (message.incoming.voice) {
     const heard = await hearTelegramVoice(env, message, dedupeKey);
     if (heard.kind === 'answered') return { action: 'ack', reason: 'completed' };
-    if (heard.kind === 'heard') message = heard.message;
+    if (heard.kind === 'heard') {
+      message = heard.message;
+      voiceTranscript = heard.transcript;
+    }
     telegramLatency('voice_heard', message.requestedAtMs, { outcome: heard.kind });
   }
   let speculativeBubble: Promise<{ messageId: number } | null> | undefined;
@@ -707,6 +712,8 @@ export async function handleRuntimeQueueMessage(
     ahead: number;
     runtime: AgentRuntimeRecord | null;
     preleased?: { lease: LeaseResult; leaseToken: string; leaseMs: number };
+    /** This admission created the run; a duplicate found it already there. */
+    created?: true;
   };
   try {
     admitted = await withTenant(env, message.businessId, async (tx) => {
@@ -734,18 +741,22 @@ export async function handleRuntimeQueueMessage(
       /* Start Telegram's placeholder request while the remaining context/run
          queries execute. The transaction never awaits this network call; on
          any admission failure the best-effort cleanup below removes it. */
-      speculativeStatus = responseMode === 'deep' ? DEEP_WORK_STATUS : QUICK_REPLY_STATUS;
-      speculativeToken = token;
-      speculativeBubble = sendMessage(
-        token,
-        message.incoming.chatId,
-        speculativeStatus,
-      ).then((live) => {
-        telegramLatency('placeholder_accepted', message.requestedAtMs, {
-          liveMessageId: live.messageId,
-        });
-        return live;
-      }).catch(() => null);
+      /* A voice note's echo must come before the working bubble, and the echo
+         waits for the commit below; its bubble is made after the echo. */
+      if (!message.incoming.voice) {
+        speculativeStatus = responseMode === 'deep' ? DEEP_WORK_STATUS : QUICK_REPLY_STATUS;
+        speculativeToken = token;
+        speculativeBubble = sendMessage(
+          token,
+          message.incoming.chatId,
+          speculativeStatus,
+        ).then((live) => {
+          telegramLatency('placeholder_accepted', message.requestedAtMs, {
+            liveMessageId: live.messageId,
+          });
+          return live;
+        }).catch(() => null);
+      }
       const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
       const telegramSessionId = `telegram:${message.businessId}:${message.incoming.chatId}`;
       const specialist = await specialistForTurn(
@@ -839,6 +850,7 @@ export async function handleRuntimeQueueMessage(
         ahead,
         runtime,
         preleased: { lease, leaseToken, leaseMs: Date.now() - leaseStartedAt },
+        created: true as const,
       };
     });
     telegramLatency('admission_committed', message.requestedAtMs);
@@ -868,6 +880,12 @@ export async function handleRuntimeQueueMessage(
      owner died. Never acknowledge merely because the lease is fresh; the
      normal lease path below verifies the explicit owner heartbeat and leaves
      a durable follow-up wake. */
+
+  /* The transcript is shown once, by the admission that created the run, and
+     before the working bubble below, so the chat reads voice, echo, answer. */
+  if (voiceTranscript !== undefined && admitted.created) {
+    await sendMessage(admitted.token, message.incoming.chatId, voiceEcho(voiceTranscript)).catch(() => {});
+  }
 
   const existingBubbleId = telegramHint(admitted.task.payload)?.liveMessageId;
   let liveMessageId = existingBubbleId;

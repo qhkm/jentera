@@ -8,38 +8,52 @@ import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
 let sent: string[];
+/** What reached Telegram and Whisper, in order: 'typing', 'transcribe', or a sent text. */
+let events: string[];
 let transcribe: ReturnType<typeof vi.fn>;
 
-async function setup(transcript: string, fileSize = 4) {
-  transcribe = vi.fn(async () => ({ text: transcript }));
-  const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1', AISAR_MODEL_NAME: 'MiniMax-M3' });
+async function setup(transcript: string, options: {
+  fileSize?: number; failDownload?: boolean; busy?: boolean; release?: string;
+} = {}) {
+  const { fileSize = 4, failDownload = false, busy = true, release = '2026.08.27-1' } = options;
+  transcribe = vi.fn(async () => { events.push('transcribe'); return { text: transcript }; });
+  const env = testEnv({ RUNTIME_RELEASE: release, AISAR_MODEL_NAME: 'MiniMax-M3' });
   env.AI = { run: transcribe } as unknown as typeof env.AI;
   const provider = new LocalRuntimeProvider();
   await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
-  await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+  await asTenant(A, (tx) => markRuntimeReady(tx, A, release, 'v1'));
   const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
     insert into app_user (email, email_verified) values ('voice-owner@example.com', true) returning id`);
   const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
     connector: 'telegram', method: 'bot_token', externalId: '123456789',
     displayName: '@voice_bot', secret: '123456789:AAtoken', connectedBy: owner.id,
   }));
-  /* Hold the runtime busy so admission commits and the task waits: this test
-     is about what admission records, not about the run. */
-  const active = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, { kind: 'provision', dedupeKey: 'voice:active' }));
-  await asTenant(A, (tx) => leaseRuntimeTask(tx, A, active.id, 'active-owner', 300));
+  /* Hold the runtime busy so admission commits and the task waits: most of
+     these tests are about what admission records, not about the run. */
+  if (busy) {
+    const active = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, { kind: 'provision', dedupeKey: 'voice:active' }));
+    await asTenant(A, (tx) => leaseRuntimeTask(tx, A, active.id, 'active-owner', 300));
+  }
   sent = [];
+  events = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/getFile')) {
+      if (failDownload) return new Response('Bad Gateway', { status: 502 });
       return new Response(JSON.stringify({ ok: true, result: { file_path: 'voice/file_1.oga', file_size: fileSize } }));
     }
     if (url.includes('/file/bot')) return new Response(new Uint8Array([0x4f, 0x67, 0x67, 0x53]));
-    if (url.endsWith('/sendMessage')) sent.push((JSON.parse(String(init?.body)) as { text: string }).text);
+    if (url.endsWith('/sendChatAction')) events.push('typing');
+    if (url.endsWith('/sendMessage')) {
+      const text = (JSON.parse(String(init?.body)) as { text: string }).text;
+      sent.push(text);
+      events.push(text);
+    }
     return new Response(JSON.stringify({ ok: true, result: { message_id: 90 } }));
   }));
-  const intake = (messageId: number, caption = '') => ({
+  const intake = (messageId: number, caption = '', requestedAtMs = Date.now()) => ({
     version: 2 as const, kind: 'telegram_intake' as const, businessId: A, connectionId: connection.id,
-    requestedAtMs: Date.now(),
+    requestedAtMs,
     incoming: { chatId: 42, messageId, from: 'Owner', text: caption, privateChat: true as const,
       voice: { fileId: 'AwAC', fileUniqueId: `AgAD${messageId}`, durationS: 4 } },
   });
@@ -88,7 +102,7 @@ describe('a Telegram voice note', () => {
   });
 
   it('refuses a voice file over five megabytes without hearing it', async () => {
-    const { env, provider, intake } = await setup('never heard', 6 * 1024 * 1024);
+    const { env, provider, intake } = await setup('never heard', { fileSize: 6 * 1024 * 1024 });
     await handleRuntimeQueueMessage(env, intake(12), { provider });
     expect(transcribe).not.toHaveBeenCalled();
     expect(sent).toEqual([VOICE_REPLIES.tooLong]);
@@ -119,27 +133,55 @@ describe('a Telegram voice note', () => {
   });
 
   /* Approvals are buttons. Words that say "approve" are an ordinary request. */
-  it('approves nothing on a transcript that says approve', async () => {
-    const { env, provider, intake } = await setup('Approve it. Yes, approve everything.');
+  it('approves nothing on a transcript that says approve, all the way through the run', async () => {
+    const release = '2026.09.01-3';
+    const { env, provider, intake } = await setup('Approve it. Yes, approve everything.', { busy: false, release });
     await asOwner((sql) => sql`
       insert into approval (business_id, connector, op, args, risk)
       values (${A}, 'google', 'create_event', ${sql.json({ requestId: 'voice-approval' })}, 'medium')`);
-    await handleRuntimeQueueMessage(env, intake(9), { provider });
+    /* A runner that answers, so the run really dispatches and finishes. */
+    const runner: typeof fetch = async (input, init) => {
+      const url = String(input);
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+      if (url.endsWith('/readyz')) {
+        return json({
+          ok: true, release,
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') return json({ ok: true, hermesRunId: 'voice-run', status: 'started' }, 202);
+      if (/\/v1\/tasks\/[^/]+\/events$/.test(url)) {
+        const stream = [{ type: 'delta', delta: 'Nothing is waiting for you to approve here.' }, { type: 'done' }]
+          .map((e) => `data: ${JSON.stringify(e)}`).join('\n\n') + '\n\n';
+        return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (/\/v1\/tasks\/[^/]+$/.test(url)) return json({ ok: true, status: 'completed', output: 'Nothing is waiting for you to approve here.' });
+      return json({ error: 'not found' }, 404);
+    };
+    await handleRuntimeQueueMessage(env, intake(9), { provider, fetch: runner });
+    const [run] = await asOwner((sql) => sql<{ status: string }[]>`
+      select status from run where business_id = ${A} and trigger_ref->>'input' = 'voice'`);
+    expect(run.status).toBe('completed');
     const [row] = await asOwner((sql) => sql<{ status: string }[]>`select status from approval where business_id = ${A}`);
     expect(row.status).toBe('pending');
   });
 
-  it('shows the transcript once when two paths hear the same note', async () => {
+  /* The echo used to go out before admission, claimed on an approximate
+     limiter: a retry more than 60 s later, or two paths at once, showed it
+     twice. It now goes out from the admission that created the run, once. */
+  it('shows the transcript once, even when two paths hear the same note, and before the working bubble', async () => {
     const { env, provider, intake } = await setup('Semak invois Kedai Seri Murni.');
-    let first = true;
-    env.TELEGRAM_ALBUM_REPLY = {
-      limit: async () => { const ok = first; first = false; return { success: ok }; },
-    } as typeof env.TELEGRAM_ALBUM_REPLY;
-    /* Both paths get past the "already admitted" check before either commits. */
     await Promise.all([
       handleRuntimeQueueMessage(env, intake(10), { provider }),
       handleRuntimeQueueMessage(env, intake(10), { provider }),
     ]);
-    expect(sent.filter((text) => text.startsWith('🎤'))).toHaveLength(1);
+    const echoes = sent.filter((text) => text.startsWith('🎤'));
+    expect(echoes).toEqual(['🎤 “Semak invois Kedai Seri Murni.”']);
+    expect(sent.indexOf(echoes[0])).toBe(0);
   });
+
 });
