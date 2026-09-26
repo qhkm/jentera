@@ -391,11 +391,65 @@ describe('the durable Hermes agent request', () => {
     );
     expect(QUICK_RUN_CAP_SECONDS).toBe(300);
     expect(quick.instructions).toMatch(/stops after 5 minutes/);
-    expect(quick.instructions).toMatch(/Do not delegate to another agent or specialist/);
+    expect(quick.instructions).toMatch(/Do not hand work to another Jentera specialist/);
     // one way that works on Telegram and in the app alike
     expect(quick.instructions).toMatch(/send it again starting with \/deep/);
     expect(quick.instructions).not.toMatch(/Give it more time/);
     expect(deep.instructions).not.toMatch(/stops after 5 minutes/);
+  });
+
+  /* On 2026-09-27 the owner asked a quick reply to "use codex" for an image.
+     The rule above then read "do not delegate to another agent", and the
+     agent took Codex for one: it refused, told the owner to resend with
+     /deep, and drew a cat in Python instead. Codex is a program the owner
+     named, not a Jentera specialist. */
+  it('lets a Quick turn use a tool the owner names, such as Codex', () => {
+    const quick = prepareHermesAgent(
+      'use codex to generate a cute cat image', [], [], new Date('2026-09-27T01:00:00.000Z'),
+      undefined, undefined, 'quick',
+    );
+    expect(quick.instructions).not.toMatch(/Do not delegate to another agent/);
+    expect(quick.instructions).toMatch(/A tool the owner names, such as Codex, is not a specialist/);
+  });
+
+  /* The /deep turn that followed ran deep, but nothing told the agent so. It
+     read its own earlier reply in the chat, said again that it could not run
+     Codex "inside this quick window", and asked for /deep a second time. */
+  it('tells a Deep turn it is the longer turn an earlier reply asked for', () => {
+    const quick = prepareHermesAgent(
+      'generate cute cat image using codex', [], [], new Date('2026-09-27T01:00:00.000Z'),
+      undefined, undefined, 'quick',
+    );
+    const deep = prepareHermesAgent(
+      'generate cute cat image using codex', [], [], new Date('2026-09-27T01:00:00.000Z'),
+      undefined, undefined, 'deep',
+    );
+    expect(deep.instructions).toMatch(/Deep response contract/);
+    expect(deep.instructions).toMatch(/not the 5-minute limit of a quick reply/);
+    expect(deep.instructions).toMatch(/this is that turn: do the work now/i);
+    expect(quick.instructions).not.toMatch(/Deep response contract/);
+  });
+
+  /* Every sprite ships Codex and Claude Code, and none was signed in on
+     2026-09-27. The agent never checked either: it told the owner Codex is
+     "not an image model" (it has image generation) and drew the cat itself.
+     Installing one or signing it in uses the owner's account, so the agent
+     asks first, in its reply, and the owner's yes is the next message. */
+  it('has every agent check a named coding agent, and ask before installing or signing it in', () => {
+    for (const mode of ['quick', 'deep', undefined] as const) {
+      const prepared = prepareHermesAgent(
+        'use codex to generate a cute cat image', [], [], new Date('2026-09-27T01:00:00.000Z'),
+        undefined, undefined, mode,
+      );
+      expect(prepared.instructions).toMatch(/Codex can also generate images/);
+      expect(prepared.instructions).toMatch(/command -v codex/);
+      expect(prepared.instructions).toMatch(/ask the owner whether to install it and finish your turn/i);
+      expect(prepared.instructions).toMatch(/npm install -g @openai\/codex/);
+      expect(prepared.instructions).toMatch(/codex login status/);
+      expect(prepared.instructions).toMatch(/ask whether to start sign-in and finish your turn/i);
+      expect(prepared.instructions).toMatch(/codex login --device-auth/);
+      expect(prepared.instructions).toMatch(/Never say a tool cannot do something you have not checked/);
+    }
   });
 
   it('carries confirmed business context without restricting the agent to it', () => {
