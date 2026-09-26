@@ -48,6 +48,7 @@
     "db:migrate:booking-details": "node scripts/apply-booking-details.mjs",
     "db:migrate:booking-branding": "node scripts/apply-booking-branding.mjs",
     "db:migrate:booking-page-theme": "node scripts/apply-booking-page-theme.mjs",
+    "db:migrate:booking-page-welcome-copy": "node scripts/apply-booking-page-welcome-copy.mjs",
     "db:migrate:booking-customer-changes": "node scripts/apply-booking-customer-changes.mjs",
     "db:migrate:booking-reminders-cutoff": "node scripts/apply-booking-reminders-cutoff.mjs",
     "db:migrate:booking-availability-protection": "node scripts/apply-booking-availability-protection.mjs",

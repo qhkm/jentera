@@ -75,7 +75,7 @@ describe('RemoteAppsApi', () => {
   it('carries the service a config refusal is about', async () => {
     answer(409, { ok: false, code: 'CAPACITY_BELOW_RESERVED', serviceId: 's-1' });
     await expect(new RemoteAppsApi().saveBookingsConfig({
-      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark',
+      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark', welcomeTitle: null, welcomeMessage: null,
       acknowledgeAvailabilityLimits: true, services: [], blocks: [],
     })).rejects.toMatchObject({ code: 'CAPACITY_BELOW_RESERVED', serviceId: 's-1' });
   });
@@ -90,7 +90,7 @@ describe('RemoteAppsApi', () => {
     const garbled = () => vi.stubGlobal('fetch', vi.fn(async () => new Response('{"ok":tr', { status: 200 })));
     garbled();
     await expect(new RemoteAppsApi().saveBookingsConfig({
-      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark',
+      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark', welcomeTitle: null, welcomeMessage: null,
       acknowledgeAvailabilityLimits: true, services: [], blocks: [],
     })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', status: 200, uncertain: true });
     await expect(new RemoteAppsApi().decide(ID, 'confirm')).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: true });

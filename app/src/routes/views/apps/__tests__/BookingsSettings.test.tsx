@@ -43,7 +43,7 @@ describe('BookingsSettings', () => {
     await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
     await user.click(screen.getByRole('button', { name: 'Publish booking page' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith({
-      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark',
+      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5', pageTheme: 'dark', welcomeTitle: null, welcomeMessage: null,
       acknowledgeAvailabilityLimits: true,
       services: [{ id: null, name: 'Cupping class', description: null, durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
         hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '17:00' })) }],
@@ -59,13 +59,18 @@ describe('BookingsSettings', () => {
     await user.clear(description);
     await user.type(description, 'A focused session with our team.');
     await user.click(screen.getByRole('button', { name: 'Booking page' }));
+    await user.type(screen.getByLabelText('Heading (optional)'), 'Make time for yourself');
+    await user.type(screen.getByLabelText('Introduction (optional)'), 'Choose the treatment that feels right today.');
     const location = screen.getByLabelText('Where the booking takes place');
     await user.clear(location);
     await user.type(location, 'Online · Link shared after confirmation');
     expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Online · Link shared after confirmation');
+    expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Make time for yourself');
+    expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Choose the treatment that feels right today.');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({
       location: 'Online · Link shared after confirmation', brandColor: '#4aebb5',
+      welcomeTitle: 'Make time for yourself', welcomeMessage: 'Choose the treatment that feels right today.',
       services: [expect.objectContaining({ description: 'A focused session with our team.' })],
     }));
   });

@@ -45,8 +45,11 @@ describe('public reads', () => {
   it('lists only active services, and reports whether the page is open', async () => {
     const page = await loadPublicPage(ENV, A);
     expect(page).toMatchObject({ businessName: 'SEIDO <Coffee>', lang: 'en', open: true,
-      settings: { location: '12 Jalan Example', pageTheme: 'dark' }, services: [{ description: 'A guided recovery session.' }] });
+      settings: { location: '12 Jalan Example', pageTheme: 'dark', welcomeTitle: null, welcomeMessage: null },
+      services: [{ description: 'A guided recovery session.' }] });
     expect(page!.services.map((s) => s.name)).toEqual(['Cupping class']);
+    await asOwner((sql) => sql`update booking_settings set welcome_title = 'Make time', welcome_message = 'Choose what feels right.' where business_id = ${A}`);
+    expect((await loadPublicPage(ENV, A))!.settings).toMatchObject({ welcomeTitle: 'Make time', welcomeMessage: 'Choose what feels right.' });
     await asOwner((sql) => sql`update booking_settings set accepting = false where business_id = ${A}`);
     expect((await loadPublicPage(ENV, A))!.open).toBe(false);
     await asOwner((sql) => sql`update booking_settings set accepting = true where business_id = ${A}`);

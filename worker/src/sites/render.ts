@@ -184,7 +184,7 @@ label{display:block;font-size:13px;font-weight:600;margin:18px 0 7px}input,selec
 @media(max-width:380px){main{padding:0 12px}.panel{padding:20px 16px}.steps{gap:2px}.steps li{font-size:8px}.service-card{gap:10px}.service-action{white-space:normal}.selection-action-copy{max-width:42%}}
 `;
 
-interface Base { slug: string; lang: Lang; businessName: string; location?: string | null; brandColor?: string; pageTheme?: BookingPageTheme; logoUrl?: string | null }
+interface Base { slug: string; lang: Lang; businessName: string; location?: string | null; brandColor?: string; pageTheme?: BookingPageTheme; welcomeTitle?: string | null; welcomeMessage?: string | null; logoUrl?: string | null }
 
 const branding = (input: Base) => ({ brandColor: input.brandColor, pageTheme: input.pageTheme, logoUrl: input.logoUrl });
 
@@ -241,7 +241,7 @@ export function servicesPage(input: Base & { services: PublicService[] }): strin
     ...branding(input),
     lang: input.lang, title: input.businessName, businessName: input.businessName, location: input.location, step: 1,
     langSwitch: href(input.slug, '', { lang: other(input.lang) }),
-    body: `<h1>${t.chooseService}</h1><p class="muted intro">${t.serviceHint}</p>${items}<p class="pending">${t.pending}</p>`,
+    body: `<h1>${escapeHtml(input.welcomeTitle?.trim() || t.chooseService)}</h1><p class="muted intro">${escapeHtml(input.welcomeMessage?.trim() || t.serviceHint)}</p>${items}<p class="pending">${t.pending}</p>`,
   });
 }
 

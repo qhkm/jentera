@@ -114,6 +114,8 @@ export interface BookingsConfig {
     location: string | null;
     brandColor: string;
     pageTheme: BookingPageTheme;
+    welcomeTitle: string | null;
+    welcomeMessage: string | null;
     logoUrl: string | null;
     availabilityAcknowledgedAt: string;
   } | null;
@@ -139,6 +141,8 @@ export interface BookingsConfigInput {
   location: string | null;
   brandColor: string;
   pageTheme: BookingPageTheme;
+  welcomeTitle: string | null;
+  welcomeMessage: string | null;
   acknowledgeAvailabilityLimits: boolean;
   services: BookingServiceInput[];
   blocks: Array<{ id: string | null; label: string; startsAt: string; endsAt: string }>;

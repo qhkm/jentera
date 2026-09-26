@@ -45,9 +45,10 @@ const service = (over: Record<string, unknown> = {}) => ({
 });
 const config = (over: Record<string, unknown> = {}) => ({
   version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: '12 Jalan Example',
-  brandColor: '#4aebb5', pageTheme: 'dark', acknowledgeAvailabilityLimits: true, services: [service()], blocks: [], ...over,
+  brandColor: '#4aebb5', pageTheme: 'dark', welcomeTitle: null, welcomeMessage: null,
+  acknowledgeAvailabilityLimits: true, services: [service()], blocks: [], ...over,
 });
-type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; settings: { brandColor: string; pageTheme: 'dark' | 'light'; logoUrl: string | null }; services: Array<{ id: string; active: boolean; hours: unknown[] }>; blocks: Array<{ id: string; label: string; startsAt: string; endsAt: string }> } };
+type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; settings: { brandColor: string; pageTheme: 'dark' | 'light'; welcomeTitle: string | null; welcomeMessage: string | null; logoUrl: string | null }; services: Array<{ id: string; active: boolean; hours: unknown[] }>; blocks: Array<{ id: string; label: string; startsAt: string; endsAt: string }> } };
 
 describe('apps route: access', () => {
   it('answers 404 for a business outside the pilot, and when the switch is off', async () => {
@@ -107,8 +108,13 @@ describe('apps route: config', () => {
   });
 
   it('saves the appearance and uploads, replaces and removes one validated logo', async () => {
-    const first = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config({ brandColor: '#62A8FF', pageTheme: 'light' })));
-    expect(first.config.settings).toMatchObject({ brandColor: '#62a8ff', pageTheme: 'light', logoUrl: null });
+    const first = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config({
+      brandColor: '#62A8FF', pageTheme: 'light', welcomeTitle: 'Make time for yourself', welcomeMessage: 'Choose what feels right today.',
+    })));
+    expect(first.config.settings).toMatchObject({
+      brandColor: '#62a8ff', pageTheme: 'light', welcomeTitle: 'Make time for yourself',
+      welcomeMessage: 'Choose what feels right today.', logoUrl: null,
+    });
     const objects = new Map<string, Uint8Array>();
     const bucket = {
       put: vi.fn(async (key: string, value: Uint8Array) => { objects.set(key, value); }),

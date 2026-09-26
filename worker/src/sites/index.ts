@@ -154,6 +154,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const base = {
     slug, lang, businessName: info.businessName, location: info.settings.location, brandColor: info.settings.brandColor,
     pageTheme: info.settings.pageTheme,
+    welcomeTitle: info.settings.welcomeTitle, welcomeMessage: info.settings.welcomeMessage,
     logoUrl: info.settings.logoVersion ? `/b/${slug}/logo?v=${encodeURIComponent(info.settings.logoVersion)}` : null,
   };
 

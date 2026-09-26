@@ -91,6 +91,15 @@ describe('pages', () => {
     expect(html).toContain(':root[data-theme="light"]{color-scheme:light');
   });
 
+  it('shows custom welcome copy as escaped text and keeps defaults when it is absent', () => {
+    const custom = servicesPage({ ...base, welcomeTitle: 'Welcome <friends>', welcomeMessage: 'Choose & relax.', services: [service] });
+    expect(custom).toContain('<h1>Welcome &lt;friends&gt;</h1>');
+    expect(custom).toContain('<p class="muted intro">Choose &amp; relax.</p>');
+    const defaults = servicesPage({ ...base, welcomeTitle: null, welcomeMessage: null, services: [service] });
+    expect(defaults).toContain('<h1>Choose a service</h1>');
+    expect(defaults).toContain('Select a service to see available dates and times.');
+  });
+
   it('uses an honest location fallback when the owner has not added one', () => {
     expect(servicesPage({ ...base, location: null, services: [service] })).toContain('Confirmed on WhatsApp');
     expect(servicesPage({ ...base, lang: 'bm', location: null, services: [service] })).toContain('Disahkan melalui WhatsApp');

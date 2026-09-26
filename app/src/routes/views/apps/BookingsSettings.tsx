@@ -118,6 +118,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const [location, setLocation] = useState(config.settings?.location ?? '');
   const [brandColor, setBrandColor] = useState(config.settings?.brandColor ?? '#4aebb5');
   const [pageTheme, setPageTheme] = useState<BookingPageTheme>(config.settings?.pageTheme ?? 'dark');
+  const [welcomeTitle, setWelcomeTitle] = useState(config.settings?.welcomeTitle ?? '');
+  const [welcomeMessage, setWelcomeMessage] = useState(config.settings?.welcomeMessage ?? '');
   const [blocks, setBlocks] = useState<BlockDraft[]>(() => config.blocks.map((block) => ({
     key: block.id, id: block.id, label: block.label, startsAt: malaysiaInput(block.startsAt), endsAt: malaysiaInput(block.endsAt),
   })));
@@ -166,6 +168,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     }
     if (location.trim().length > 160) found.location = 'bookings.settings.error.location';
     if (!BRAND_COLOR.test(brandColor)) found.brandColor = 'bookings.settings.error.brandColor';
+    if (welcomeTitle.trim().length > 80) found.welcomeTitle = 'bookings.settings.error.welcomeTitle';
+    if (welcomeMessage.trim().length > 240) found.welcomeMessage = 'bookings.settings.error.welcomeMessage';
     for (const block of blocks) {
       const start = malaysiaIso(block.startsAt);
       const end = malaysiaIso(block.endsAt);
@@ -184,7 +188,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     setErrors(found);
     if (Object.keys(found).length) {
       const keys = Object.keys(found);
-      if (keys.some((key) => key === 'location' || key === 'slug' || key === 'brandColor')) setPanel('page');
+      if (keys.some((key) => key === 'location' || key === 'slug' || key === 'brandColor' || key.startsWith('welcome'))) setPanel('page');
       else if (keys.some((key) => key === 'horizon' || key === 'changeCutoff')) setPanel('rules');
       else if (keys.some((key) => key.endsWith('.range'))) setPanel('blocks');
       else if (keys.some((key) => key.endsWith('.hours') || key.includes('.day.'))) setPanel('hours');
@@ -201,6 +205,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       location: location.trim() || null,
       brandColor: brandColor.toLowerCase(),
       pageTheme,
+      welcomeTitle: welcomeTitle.trim() || null,
+      welcomeMessage: welcomeMessage.trim() || null,
       acknowledgeAvailabilityLimits: installed || acknowledged,
       services: services.map((service) => ({
         id: service.id,
@@ -382,6 +388,22 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     </div>}
     {panel === 'page' && <div className="bookings-page-editor">
     <div className="bookings-page-controls">
+    <section className="bookings-page-copy" aria-labelledby="bookings-welcome-title">
+      <div>
+        <h4 id="bookings-welcome-title">{t('bookings.settings.welcome')}</h4>
+        <p className="bookings-lead">{t('bookings.settings.welcome.help')}</p>
+      </div>
+      <label>{t('bookings.settings.welcome.title')}
+        <Input value={welcomeTitle} maxLength={80} placeholder={t('bookings.settings.welcome.title.placeholder')}
+          aria-invalid={Boolean(errors.welcomeTitle)} onChange={(event) => setWelcomeTitle(event.target.value)} />
+      </label>
+      {error('welcomeTitle')}
+      <label>{t('bookings.settings.welcome.message')}
+        <textarea className="input" value={welcomeMessage} maxLength={240} placeholder={t('bookings.settings.welcome.message.placeholder')}
+          aria-invalid={Boolean(errors.welcomeMessage)} onChange={(event) => setWelcomeMessage(event.target.value)} />
+      </label>
+      {error('welcomeMessage')}
+    </section>
     <section className="bookings-branding" aria-labelledby="bookings-branding-title">
       <div>
         <h4 id="bookings-branding-title">{t('bookings.settings.branding')}</h4>
@@ -458,8 +480,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         </div>
         <div className="bookings-preview-progress" aria-hidden="true"><i /><i /><i /><i /></div>
         <div className="bookings-preview-content">
-          <h5>{t('bookings.settings.preview.choose')}</h5>
-          <p>{t('bookings.settings.preview.chooseHelp')}</p>
+          <h5>{welcomeTitle.trim() || t('bookings.settings.preview.choose')}</h5>
+          <p>{welcomeMessage.trim() || t('bookings.settings.preview.chooseHelp')}</p>
           <div className="bookings-preview-services">
             {previewServices.length ? previewServices.map((service) => <div key={service.key}>
               <span><strong>{service.name.trim() || t('bookings.settings.service')}</strong>

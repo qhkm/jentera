@@ -26,7 +26,7 @@ export interface PublicPage {
   lang: Lang;
   /** Taking new requests: the installation is active and the owner has not paused it. */
   open: boolean;
-  settings: { minNoticeMinutes: number; horizonDays: number; location: string | null; brandColor: string; pageTheme: BookingPageTheme; logoVersion: string | null };
+  settings: { minNoticeMinutes: number; horizonDays: number; location: string | null; brandColor: string; pageTheme: BookingPageTheme; welcomeTitle: string | null; welcomeMessage: string | null; logoVersion: string | null };
   services: PublicService[];
 }
 
@@ -42,8 +42,8 @@ export async function readPublicPage(tx: postgres.TransactionSql, businessId: st
   const [business] = await tx<{ name: string; lang: Lang }[]>`select name, lang from business where id = ${businessId}`;
   const [installed] = await tx<{ state: 'active' | 'paused' }[]>`
     select state from app_installation where business_id = ${businessId} and app_key = 'bookings'`;
-  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; brand_color: string; page_theme: BookingPageTheme; logo_key: string | null; logo_updated_at: Date | null }[]>`
-    select accepting, min_notice_minutes, horizon_days, location, brand_color, page_theme, logo_key, logo_updated_at
+  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; brand_color: string; page_theme: BookingPageTheme; welcome_title: string | null; welcome_message: string | null; logo_key: string | null; logo_updated_at: Date | null }[]>`
+    select accepting, min_notice_minutes, horizon_days, location, brand_color, page_theme, welcome_title, welcome_message, logo_key, logo_updated_at
       from booking_settings where business_id = ${businessId}`;
   if (!business || !installed || !settings) return null;
   // duration_minutes > 0 guards openSlots, whose loop would never end on zero.
@@ -60,6 +60,8 @@ export async function readPublicPage(tx: postgres.TransactionSql, businessId: st
       minNoticeMinutes: settings.min_notice_minutes, horizonDays: settings.horizon_days, location: settings.location,
       brandColor: settings.brand_color,
       pageTheme: settings.page_theme,
+      welcomeTitle: settings.welcome_title,
+      welcomeMessage: settings.welcome_message,
       logoVersion: settings.logo_key && settings.logo_updated_at ? settings.logo_updated_at.toISOString() : null,
     },
     services: services.map((s) => ({

@@ -22,7 +22,7 @@ export function configFixture(over: Partial<BookingsConfig> = {}): BookingsConfi
     version: 3,
     settings: {
       accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30,
-      location: '12 Jalan Example, Kuala Lumpur', brandColor: '#4aebb5', pageTheme: 'dark', logoUrl: null,
+      location: '12 Jalan Example, Kuala Lumpur', brandColor: '#4aebb5', pageTheme: 'dark', welcomeTitle: null, welcomeMessage: null, logoUrl: null,
       availabilityAcknowledgedAt: '2026-10-01T00:00:00.000Z',
     },
     services: [{

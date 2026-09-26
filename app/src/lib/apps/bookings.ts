@@ -188,6 +188,8 @@ export function configToInput(config: BookingsConfig): BookingsConfigInput {
     location: config.settings?.location ?? null,
     brandColor: config.settings?.brandColor ?? '#4aebb5',
     pageTheme: config.settings?.pageTheme ?? 'dark',
+    welcomeTitle: config.settings?.welcomeTitle ?? null,
+    welcomeMessage: config.settings?.welcomeMessage ?? null,
     acknowledgeAvailabilityLimits: config.settings !== null,
     services: config.services.map((service) => ({ ...service, hours: service.hours.map((range) => ({ ...range })) })),
     blocks: config.blocks.map((block) => ({ ...block })),
