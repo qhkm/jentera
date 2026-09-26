@@ -77,6 +77,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/browser-recipes.mjs \
   runner/src/browser-preview-stream.mjs \
   runner/src/desktop-gateway.mjs \
+  runner/src/handoff.mjs \
   runner/bin/desktop-smoke.mjs \
   runner/bin/desktop-release-keys.py \
   runner/bin/jentera-tint2rc \

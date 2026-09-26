@@ -39,6 +39,8 @@ let browserCommands;
 let browserBarrier;
 let ensureBarrier;
 let ensureCalls;
+let eventsByRun = {};
+let holdRootEvents = null;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
@@ -57,6 +59,8 @@ beforeEach(async () => {
   browserBarrier = null;
   ensureBarrier = null;
   ensureCalls = 0;
+  eventsByRun = {};
+  holdRootEvents = null;
   hermesEventsList = [
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
@@ -94,8 +98,11 @@ beforeEach(async () => {
       return reply(res, 202, { run_id: `run-${starts.length}`, status: 'started' });
     }
     if (requestPath?.endsWith('/events')) {
+      const runId = requestPath.split('/').at(-2);
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      for (const event of hermesEventsList) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      for (const event of eventsByRun[runId] ?? hermesEventsList) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      /* A root run waiting inside ask_specialist keeps its stream open. */
+      if (runId === 'run-1' && holdRootEvents) await holdRootEvents;
       return res.end();
     }
     if (req.method === 'POST' && requestPath?.endsWith('/approval')) {
@@ -132,7 +139,18 @@ beforeEach(async () => {
   });
   hermesOrigin = await listen(hermesServer);
 
-  runnerServer = createRunner({
+  runnerServer = createRunner(runnerInput());
+  runnerOrigin = await listen(runnerServer);
+});
+
+afterEach(async () => {
+  await close(runnerServer);
+  await close(hermesServer);
+  await rm(directory, { recursive: true, force: true });
+});
+
+function runnerInput() {
+  return {
     businessBrowser: {
       ensure: async () => { ensureCalls += 1; if (ensureBarrier) await ensureBarrier; },
       isPaused: async () => browserPaused,
@@ -157,15 +175,8 @@ beforeEach(async () => {
     deepModelName: 'deepseek-v4-flash',
     candidateModelNames: ['MiniMax-M2.7-highspeed'],
     stateFile: join(directory, 'state.json'),
-  });
-  runnerOrigin = await listen(runnerServer);
-});
-
-afterEach(async () => {
-  await close(runnerServer);
-  await close(hermesServer);
-  await rm(directory, { recursive: true, force: true });
-});
+  };
+}
 
 test('liveness reveals no credential and requires no runner key', async () => {
   const response = await fetch(`${runnerOrigin}/healthz`);
@@ -1013,4 +1024,108 @@ test('commandProgram edge cases: operators, heredocs, wrappers, and names that a
   assert.equal(commandProgram('env -i PATH=/usr/bin ls'), 'ls');
   assert.equal(commandProgram('-v'), '');
   assert.equal(commandProgram('--help'), '');
+});
+
+const HANDOFF = { maxDepth: 2, maxHandoffs: 5, preamble: 'You are working on part of a task for a colleague.' };
+
+function handoffChannel() {
+  return {
+    state: () => ({ schema: 2, version: 'abcdef12', appliedAt: null, source: 'control-plane' }),
+    profiles: () => ['operations', 'customers', 'growth', 'records'],
+    handoffEnabled: () => true,
+    roster: () => [{ profile: 'records', name: 'Finance and records', description: 'Invoices and cash flow.', instructions: '' }],
+    loadLastKnownGood: async () => {},
+    refresh: async () => 'unchanged',
+    applyPending: async () => false,
+    backoffMs: () => 60_000,
+  };
+}
+
+async function withHandoffs() {
+  await close(runnerServer);
+  runnerServer = createRunner({ ...runnerInput(), configChannel: handoffChannel() });
+  runnerOrigin = await listen(runnerServer);
+  let release;
+  holdRootEvents = new Promise((resolve) => { release = resolve; });
+  return () => release();
+}
+
+const handOff = (body) => fetch(`${runnerOrigin}/v1/handoff`, {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${HERMES_KEY}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+test('hand-off routes answer only the Hermes key', async () => {
+  assert.equal((await fetch(`${runnerOrigin}/v1/handoff/available`)).status, 401);
+  assert.equal((await fetch(`${runnerOrigin}/v1/handoff/available`, {
+    headers: { 'X-Aisar-Runner-Key': RUNNER_KEY } })).status, 401);
+  const answer = await fetch(`${runnerOrigin}/v1/handoff/available`, { headers: { Authorization: `Bearer ${HERMES_KEY}` } });
+  assert.deepEqual(await answer.json(), { ok: true, available: false });
+  assert.equal((await fetch(`${runnerOrigin}/v1/handoff`, { method: 'POST', body: '{}' })).status, 401);
+});
+
+test('a specialist works inside the task that asked for it', async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'completed';
+  eventsByRun['run-2'] = [
+    { event: 'tool.started', tool: 'terminal', preview: 'TOKEN=secret git status' },
+    { event: 'run.completed', output: '3 invoices are unpaid.', usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 } },
+  ];
+  await start(TASK, { handoff: HANDOFF });
+  const response = await handOff({ runId: 'run-1', specialist: 'records', brief: 'password=hunter2 Which invoices?' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(),
+    { ok: true, specialist: 'records', name: 'Finance and records', answer: '3 invoices are unpaid.' });
+  assert.ok(hermesPaths.includes('/p/records/v1/runs'));
+  assert.match(starts.at(-1).instructions, /You are the Finance and records specialist/);
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const stream = await (await call(`/v1/tasks/${TASK}/events`, { headers: { Accept: 'text/event-stream' } })).text();
+  assert.match(stream, /"type":"handoff","stage":"started","specialist":"records","name":"Finance and records","depth":1/);
+  assert.match(stream, /"tool":"terminal","preview":"git","agent":"records"/);
+  assert.doesNotMatch(stream, /hunter2|Which invoices|secret/);
+  const status = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.deepEqual(status.usage, { input_tokens: 142, output_tokens: 32, total_tokens: 174 });
+});
+
+test("ask_specialist's own step never carries the brief", async () => {
+  hermesEventsList = [{ event: 'tool.started', tool: 'ask_specialist', preview: 'records: password=hunter2 check invoices' }];
+  await start(TASK);
+  const stream = await (await call(`/v1/tasks/${TASK}/events`, { headers: { Accept: 'text/event-stream' } })).text();
+  assert.match(stream, /"tool":"ask_specialist"/);
+  assert.doesNotMatch(stream, /hunter2|check invoices/);
+});
+
+test("an approval from a specialist is answered on the specialist's own run", async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [{ event: 'approval.request', request_id: 'b'.repeat(32), description: 'Create a draft invoice' }];
+  await start(TASK, { handoff: HANDOFF });
+  const pending = handOff({ runId: 'run-1', specialist: 'records', brief: 'Draft it' });
+  /* The first status poll of run-2 comes after its stream, and so its approval, was relayed. */
+  await waitFor(() => hermesPaths.includes('/p/records/v1/runs/run-2'), 3_000);
+  const decided = await call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: 'b'.repeat(32), decision: 'approve' }),
+  });
+  assert.equal(decided.status, 200);
+  assert.ok(hermesPaths.includes('/p/records/v1/runs/run-2/approval'));
+  hermesStatus = 'completed';
+  assert.equal((await (await pending).json()).ok, true);
+  release();
+});
+
+test('stopping the task stops the specialist working for it', async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [];
+  await start(TASK, { handoff: HANDOFF });
+  const pending = handOff({ runId: 'run-1', specialist: 'records', brief: 'A long job' });
+  await waitFor(() => hermesPaths.includes('/p/records/v1/runs/run-2'), 3_000);
+  assert.equal((await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' })).status, 200);
+  assert.equal((await (await pending).json()).code, 'stopped');
+  assert.ok(hermesPaths.includes('/p/records/v1/runs/run-2/stop'));
+  release();
 });

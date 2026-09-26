@@ -15,6 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { createBusinessBrowser, BrowserProblem } from './business-browser.mjs';
 import { serveBrowserPreview } from './browser-preview-stream.mjs';
 import { createDesktopGateway } from './desktop-gateway.mjs';
+import { HandoffEngine, addUsage, handoffFieldProblem, handoffRequestProblem } from './handoff.mjs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 const BODY_LIMIT = 64 * 1024;
@@ -349,6 +350,14 @@ export function configRejection(document) {
       return 'specialist instructions must be at most 4000 characters';
     }
   }
+  /* A business on the hand-off pilot is told so here (worker config-document.ts). */
+  if (document.handoff !== undefined) {
+    const handoff = document.handoff;
+    if (!handoff || typeof handoff !== 'object' || Array.isArray(handoff) ||
+        Object.keys(handoff).some((key) => key !== 'enabled') || typeof handoff.enabled !== 'boolean') {
+      return 'handoff must be { enabled: boolean }';
+    }
+  }
   return null;
 }
 
@@ -414,6 +423,9 @@ export function createConfigChannel(config, deps = {}) {
     .map((profile) => ({ profile })))
     .map((specialist) => specialist.profile)
     .filter((profile) => typeof profile === 'string');
+  const handoffEnabled = () => applied?.handoff?.enabled === true;
+  const roster = () => (applied?.specialists ?? []).map(({ profile, name, description, instructions }) =>
+    ({ profile, name, description, instructions }));
 
   /** Restore the last applied document so a control plane outage is a no-op. */
   async function loadLastKnownGood() {
@@ -556,7 +568,7 @@ export function createConfigChannel(config, deps = {}) {
   const backoffMs = () =>
     CONFIG_BACKOFF_MS[Math.min(failures, CONFIG_BACKOFF_MS.length - 1)];
 
-  return { state, profiles, loadLastKnownGood, refresh, applyPending, backoffMs };
+  return { state, profiles, handoffEnabled, roster, loadLastKnownGood, refresh, applyPending, backoffMs };
 }
 
 export function createRunner(input) {
@@ -567,6 +579,14 @@ export function createRunner(input) {
      control plane is away still serves with the config it already had. */
   const configChannel = input.configChannel ?? createConfigChannel(config);
   const streams = new SafeDeltaStreams(config);
+  const handoffs = new HandoffEngine({
+    hermes: (path, init, profile) => hermes(config, path, init, profile),
+    events: (runId, profile, signal) => hermesEvents(config, runId, profile, signal),
+    emit: (taskId, event, target) => streams.emitNested(taskId, event, target),
+    translate: nestedHermesEvent,
+    roster: () => configChannel.roster?.() ?? [],
+    enabled: () => configChannel.handoffEnabled?.() === true,
+  });
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
   let admittingTaskId = null;
@@ -640,6 +660,25 @@ export function createRunner(input) {
           capabilities: config.capabilities,
           keepalive: keepalive.status(),
         });
+      }
+
+      /* Called by the ask_specialist tool from Hermes on this machine. Hermes
+         holds its own API key, not the runner key, so these answer before the
+         runner-key check and accept only the Hermes key. */
+      if (url.pathname === '/v1/handoff/available' && req.method === 'GET') {
+        if (!sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
+          return json(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        return json(res, 200, { ok: true, available: configChannel.handoffEnabled?.() === true });
+      }
+      if (url.pathname === '/v1/handoff' && req.method === 'POST') {
+        if (!sameSecret(authorizationBearer(req.headers.authorization), config.hermesKey)) {
+          return json(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const body = await readJson(req);
+        const problem = handoffRequestProblem(body);
+        if (problem) return json(res, 400, { ok: false, error: problem });
+        return json(res, 200, await handoffs.request(body));
       }
 
       if (!sameSecret(req.headers['x-aisar-runner-key'], config.runnerKey)) {
@@ -960,6 +999,14 @@ export function createRunner(input) {
           };
           await state.put(body.taskId, running);
           streams.start(body.taskId, result.run_id, body.profile);
+          handoffs.register(body.taskId, {
+            rootRunId: result.run_id,
+            rootProfile: body.profile,
+            deadlineAt: body.deadlineAt,
+            model: body.model ?? (responseMode === 'quick' ? config.modelName : config.deepModelName),
+            handoff: body.handoff,
+            outputsInstruction: outputsDir ? outputsInstruction(outputsDir) : '',
+          });
           if (terminating) void terminations.resume(running);
           else terminations.arm(running);
           return json(res, 202, {
@@ -1066,7 +1113,7 @@ export function createRunner(input) {
           }
           return json(res, 502, { ok: false, error: 'Hermes status failed' });
         }
-        const observed = await persistObservedStatus(state, saved, result, { config });
+        const observed = await persistObservedStatus(state, saved, result, { config, handoffUsage: (taskId) => handoffs.usageOf(taskId) });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -1081,6 +1128,9 @@ export function createRunner(input) {
         if (typeof saved.hermesRunId !== 'string') {
           return json(res, 503, { ok: false, error: 'Hermes run identity is unavailable' });
         }
+        /* A specialist working for this task is stopped first; its caller's
+           tool call is waiting on it and would otherwise hang to its limit. */
+        await handoffs.stopTask(saved.taskId);
         const stopped = await hermes(
           config,
           `/v1/runs/${encodeURIComponent(saved.hermesRunId)}/stop`,
@@ -1111,7 +1161,7 @@ export function createRunner(input) {
         if (stopStatus !== 'stopping' && !TERMINAL.has(stopStatus)) {
           return json(res, 502, { ok: false, error: 'Hermes returned an invalid stop outcome' });
         }
-        const observed = await persistObservedStatus(state, saved, result, { config });
+        const observed = await persistObservedStatus(state, saved, result, { config, handoffUsage: (taskId) => handoffs.usageOf(taskId) });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -1493,6 +1543,8 @@ function taskProblem(body, config, specialistProfiles = STARTER_SPECIALIST_PROFI
       return 'deadlineAt must be a future epoch-millisecond instant no more than 3600 seconds away';
     }
   }
+  const handoffProblem = handoffFieldProblem(body.handoff);
+  if (handoffProblem) return handoffProblem;
   const grant = validateGrant(body.toolGrant, config, body.taskId);
   if (grant) return grant;
   return null;
@@ -1547,7 +1599,7 @@ async function hermes(config, path, init = {}, profile) {
   });
 }
 
-async function hermesEvents(config, runId, profile) {
+async function hermesEvents(config, runId, profile, signal) {
   return fetch(
     `${config.hermesOrigin}${hermesProfilePath(`/v1/runs/${encodeURIComponent(runId)}/events`, profile)}`,
     {
@@ -1555,7 +1607,9 @@ async function hermesEvents(config, runId, profile) {
       Authorization: `Bearer ${config.hermesKey}`,
       Accept: 'text/event-stream',
     },
-    signal: AbortSignal.timeout(15 * 60 * 1000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(15 * 60 * 1000)])
+      : AbortSignal.timeout(15 * 60 * 1000),
     },
   );
 }
@@ -1791,6 +1845,11 @@ async function persistObservedStatus(state, saved, result, deps = {}) {
   const already = savedTerminalStatus(saved);
   if (already) return already;
   let observed = boundedTaskStatus(result);
+  /* Specialists' tokens are the task's tokens. Added only to a measured
+     figure: a missing root figure makes the worker charge its ceiling, and
+     a partial one would undercount. */
+  const handoffUsage = deps.handoffUsage?.(saved.taskId);
+  if (handoffUsage && observed.usage) observed = { ...observed, usage: addUsage(observed.usage, handoffUsage) };
   const status = typeof observed.status === 'string' ? observed.status : 'unknown';
   if (TERMINAL.has(status) && deps.config) {
     /* Files the agent saved for the owner go to the worker now, so the
@@ -2181,6 +2240,7 @@ class SafeDeltaStreams {
       scrubber: new StreamingThinkScrubber(),
       pendingApprovals: [],
       resolvedApprovals: new Map(),
+      approvalTargets: new Map(),
       approvalResolution: null,
       done: false,
     };
@@ -2305,12 +2365,7 @@ class SafeDeltaStreams {
     if (event?.event === 'tool.started') {
       const tool = safeToolName(event.tool);
       if (!tool) return;
-      // Shell/process input may contain a bare OAuth code with no key name
-      // to redact. Never publish those arguments into SSE or durable traces:
-      // the program name is enough to read, and code has no safe first word.
-      const preview = /^execute_code$/i.test(tool) ? ''
-        : /^(?:terminal|process|shell|bash)$/i.test(tool) ? commandProgram(event.preview)
-          : safeToolPreview(event.preview);
+      const preview = toolStartedPreview(tool, event.preview);
       this.emitEvent(stream, {
         type: 'tool.started',
         seq: stream.nextSeq++,
@@ -2369,6 +2424,22 @@ class SafeDeltaStreams {
     for (const subscriber of stream.subscribers) writeSse(subscriber, safe);
   }
 
+  /** A specialist's event, relayed into the task it is working for. */
+  emitNested(taskId, event, target) {
+    const stream = this.streams.get(taskId);
+    if (!stream || stream.done) return;
+    if (event.type === 'approval') {
+      if (stream.pendingApprovals.some((approval) => approval.requestId === event.requestId) ||
+          stream.resolvedApprovals.has(event.requestId)) return;
+      const approval = { ...event, seq: stream.nextSeq++ };
+      stream.pendingApprovals.push(approval);
+      if (target) stream.approvalTargets.set(event.requestId, target);
+      this.emitEvent(stream, approval);
+      return;
+    }
+    this.emitEvent(stream, { ...event, seq: stream.nextSeq++ });
+  }
+
   /** Bind the native Hermes request identity end to end. The in-flight
    * operation and resolved map make same-process response-loss retries
    * idempotent; Hermes also treats a repeated resolved request_id as a no-op. */
@@ -2392,10 +2463,11 @@ class SafeDeltaStreams {
       const result = await stream.approvalResolution.promise;
       return result.error ? result : { ...result, duplicate: true };
     }
+    const target = stream.approvalTargets.get(requestId);
     const operation = (async () => {
       const response = await hermes(
         this.config,
-        `/v1/runs/${encodeURIComponent(runId)}/approval`,
+        `/v1/runs/${encodeURIComponent(target?.runId ?? runId)}/approval`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2405,7 +2477,7 @@ class SafeDeltaStreams {
             ...(decision === 'deny' && reason ? { reason } : {}),
           }),
         },
-        stream.profile,
+        target ? target.profile : stream.profile,
       );
       if (!response.ok) {
         return {
@@ -2414,6 +2486,7 @@ class SafeDeltaStreams {
         };
       }
       stream.pendingApprovals.shift();
+      stream.approvalTargets.delete(requestId);
       stream.history = stream.history.filter(
         (event) => event.type !== 'approval' || event.requestId !== requestId,
       );
@@ -2669,6 +2742,46 @@ function safeToolPreview(value) {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/-]{12,}/gi, '$1[redacted]')
     .replace(/\b(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]'), 1_000);
+}
+
+/* What a tool start may show. Shell and process input can hold a bare OAuth
+   code with no key name to redact, code has no safe first word, and
+   ask_specialist's argument is the caller's brief to a colleague, which the
+   owner is never shown verbatim. */
+function toolStartedPreview(tool, preview) {
+  if (/^(?:execute_code|ask_specialist)$/i.test(tool)) return '';
+  if (/^(?:terminal|process|shell|bash)$/i.test(tool)) return commandProgram(preview);
+  return safeToolPreview(preview);
+}
+
+/* A specialist's Hermes event, reduced to what its caller's task stream may
+   carry: tools and approvals, marked with the specialist. Its answer text,
+   reasoning and iterations stay out; the owner reads the caller's one answer. */
+function nestedHermesEvent(event, agent) {
+  if (event?.event === 'tool.started') {
+    const tool = safeToolName(event.tool);
+    if (!tool) return null;
+    const preview = toolStartedPreview(tool, event.preview);
+    return { type: 'tool.started', tool, ...(preview ? { preview } : {}), agent };
+  }
+  if (event?.event === 'tool.completed') {
+    const tool = safeToolName(event.tool);
+    if (!tool) return null;
+    return {
+      type: 'tool.completed',
+      tool,
+      duration: Number.isFinite(event.duration) ? Math.max(0, Math.min(900, Number(event.duration))) : 0,
+      error: event.error === true,
+      agent,
+    };
+  }
+  if (event?.event === 'approval.request') {
+    const requestId = safeApprovalRequestId(event.request_id);
+    const message = safeToolPreview(event.description);
+    if (!requestId || !message) return null;
+    return { type: 'approval', requestId, tool: approvalToolName(event), message, agent };
+  }
+  return null;
 }
 
 function safeApprovalRequestId(value) {
