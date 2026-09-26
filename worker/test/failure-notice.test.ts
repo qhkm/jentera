@@ -5,6 +5,7 @@ import {
   failureNotice,
   FAILURE_NOTICES,
   isFailureNotice,
+  telegramFailureNotice,
 } from '../src/runtime/failure-notice';
 
 /* Three runs failed on 2026-09-11 01:21 UTC with the router's own quota
@@ -43,5 +44,16 @@ describe('what the owner is told when a run fails', () => {
     expect(isFailureNotice(CREDIT_CAP_NOTICE)).toBe(true);
     expect(isFailureNotice(quota)).toBe(false);
     expect(isFailureNotice(null)).toBe(false);
+  });
+
+  /* Telegram has no button to give a reply more time, so the message says how. */
+  it('tells a Telegram owner how to give a quick reply more time', () => {
+    const quick = telegramFailureNotice('run deadline exceeded', 'quick');
+    expect(quick).toMatch(/\/deep/);
+    expect(quick).toMatch(/5 minutes/);
+    expect(quick).not.toBe(FAILURE_NOTICES.timeout);
+    expect(telegramFailureNotice('run deadline exceeded', 'deep')).toBe(FAILURE_NOTICES.timeout);
+    expect(telegramFailureNotice('run deadline exceeded', undefined)).toBe(FAILURE_NOTICES.timeout);
+    expect(telegramFailureNotice('HTTP 503: Service Unavailable', 'quick')).toBe(FAILURE_NOTICES.provider_unavailable);
   });
 });

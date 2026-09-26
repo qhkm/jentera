@@ -1,3 +1,5 @@
+import { QUICK_RUN_CAP_SECONDS, type ResponseMode } from './response-mode';
+
 /**
  * What the owner is told when a run fails.
  *
@@ -73,6 +75,18 @@ export function classifyRunFailure(detail: unknown): FailureKind {
   if (/timed? ?out|timeout|deadline exceeded|exceeded (?:its |the )?time limit|(?:http|code:)\s*524/i.test(text)) return 'timeout';
   if (PROVIDER_UNAVAILABLE.test(text)) return 'provider_unavailable';
   return 'generic';
+}
+
+/** Telegram's line when a quick reply ran out of time. The app offers a
+    "Give it more time" button; Telegram has none, so the line says how. */
+export const TELEGRAM_QUICK_TIMEOUT_NOTICE =
+  `⚠️ This needed longer than a quick reply allows, so it stopped after ${QUICK_RUN_CAP_SECONDS / 60} minutes. ` +
+  'To give Jentera more time, send it again starting with /deep.';
+
+export function telegramFailureNotice(detail: unknown, responseMode: ResponseMode | undefined): string {
+  return responseMode === 'quick' && classifyRunFailure(detail) === 'timeout'
+    ? TELEGRAM_QUICK_TIMEOUT_NOTICE
+    : failureNotice(detail);
 }
 
 /** The owner-facing line for a failure detail; never the detail itself. */

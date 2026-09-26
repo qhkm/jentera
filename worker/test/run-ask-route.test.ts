@@ -819,6 +819,21 @@ describe('response mode from the web chat', () => {
   it('rejects an unknown response mode', async () => {
     expect((await modelFor({ question: 'hi', responseMode: 'fast' })).status).toBe(400);
   });
+  /* Hermes reads a leading "/" as its own command, so the agent gets the
+     request; the run keeps what the owner typed. */
+  it('hands the agent the request without the /deep that chose the mode', async () => {
+    await readyRuntime(A);
+    const response = await call('POST', '/api/runs/ask', modes(), cookieA, {
+      requestId: crypto.randomUUID(), mode: 'work', question: '/deep compare our suppliers',
+    });
+    const { runId } = await response.json() as { runId: string };
+    const [row] = await asOwner((sql) => sql<{ question: string; payload: { input: string; responseMode: string } }[]>`
+      select r.trigger_ref->>'question' as question, t.payload
+        from run r join runtime_task t on t.run_id = r.id where r.id = ${runId}`);
+    expect(row.payload.responseMode).toBe('deep');
+    expect(row.payload.input).toBe('compare our suppliers');
+    expect(row.question).toBe('/deep compare our suppliers');
+  });
 });
 
 describe('the first slice of a web ask runs inline from the intake', () => {

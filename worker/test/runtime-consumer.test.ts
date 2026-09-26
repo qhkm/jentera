@@ -810,6 +810,13 @@ describe('the runtime queue consumer', () => {
     const runs = await asTenant(A, (tx) => tx<{ model: string }[]>`
       select model from run where business_id = ${A} order by created_at`);
     expect(runs.map((run) => run.model)).toEqual(['MiniMax-M2.7-highspeed', 'deepseek-v4-flash']);
+    /* The command picks the mode; Hermes would read a leading "/" as its own. */
+    const [deep] = await asOwner((sql) => sql<{ input: string; question: string }[]>`
+      select t.payload->>'input' as input, t.payload->'telegram'->>'question' as question
+        from runtime_task t join run r on r.id = t.run_id
+       where r.business_id = ${A} and r.model = 'deepseek-v4-flash'`);
+    expect(deep.input.startsWith('research the latest payroll rules')).toBe(true);
+    expect(deep.question).toBe('/deep research the latest payroll rules');
   });
 
   it('wakes the oldest waiting task when a task completes (Hermes-style FIFO)', async () => {

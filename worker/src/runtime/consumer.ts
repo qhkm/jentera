@@ -77,7 +77,7 @@ import { finalizeRuntimeUsage, runtimeUsageDeadline, RuntimeBudgetExceeded } fro
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { applyRuntimeApprovalDecision } from './approvals';
-import { CREDIT_CAP_NOTICE, failureNotice } from './failure-notice';
+import { CREDIT_CAP_NOTICE, failureNotice, telegramFailureNotice } from './failure-notice';
 import { createWebProgress } from './web-progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
@@ -106,7 +106,7 @@ import {
 } from '../agent-runtime';
 import { runtimeReady } from './execution';
 import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '../ask';
-import { modelForResponseMode, responseModeFor } from './response-mode';
+import { modelForResponseMode, responseModeFor, withoutModeCommand } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
 import { recordDelegation } from '../coordination';
@@ -747,7 +747,7 @@ export async function handleRuntimeQueueMessage(
       const prepared = prepareHermesAgent(
         /* The note goes to the agent only. The run, the task's `telegram`
            block, retrieval and specialist routing all keep the caption. */
-        withUnseenMediaNote(message.incoming.text, message.incoming.unseen),
+        withUnseenMediaNote(withoutModeCommand(message.incoming.text), message.incoming.unseen),
         facts,
         work,
         new Date(),
@@ -2098,6 +2098,7 @@ export async function handleRuntimeMessage(
             liveStream,
             liveBubbleId,
             options.telegramToken,
+            telegramFailureNotice(outcome.result, outcome.payload.responseMode),
           );
           telegramDelivery = finalizedLiveBubble ? 'failed' : undefined;
         }

@@ -50,7 +50,7 @@ import { publishRunProgressSafely } from '../runtime/progress';
 import { FAILURE_NOTICES, isFailureNotice } from '../runtime/failure-notice';
 import { artifactsForRun } from '../artifacts';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
-import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
+import { modelForResponseMode, responseModeFor, withoutModeCommand } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
 import { botPreference, listSpecialists, specialistForTurn, specialistProfileValid } from '../specialists';
 import { runCoordination } from '../coordination';
@@ -854,10 +854,11 @@ async function startDurableAsk(
     }
     return json({ ok: true, pending: true, runId: reservation.runId, preview: reservation.preview }, { status: 202 }, cors);
   }
-  let agentQuestion = question;
+  /* A typed /deep picks the mode below; Hermes would read it as a command. */
+  let agentQuestion = withoutModeCommand(question);
   if (inputFile) {
     try {
-      agentQuestion = await questionWithFile(env, question, inputFile);
+      agentQuestion = await questionWithFile(env, agentQuestion, inputFile);
     } catch (error) {
       if (reservation?.kind === 'new') await failPreview(env, userId, requestId);
       const message = error instanceof Error ? error.message : 'Could not read that file.';

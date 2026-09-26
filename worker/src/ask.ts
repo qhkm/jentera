@@ -335,7 +335,7 @@ const QUICK_TURN_PROMPT = `Quick response contract:
   Do not delegate to another agent or specialist in a quick reply, even when asked to "ask" one;
   answer in that role yourself. When the request needs longer research, many steps or edits,
   give the useful short answer you can now and say the full job needs more time: the owner can
-  send it again with /deep, or use Give it more time if this reply runs out.`;
+  send it again starting with /deep.`;
 
 /**
  * Where a fact came from, in words the model can repeat verbatim.

@@ -83,6 +83,14 @@ export function modelForResponseMode(
  * to 2026-09-09 took nine and ten minutes on deepseek while the owner
  * waited for a chat answer. Ten minutes is a cost an owner should choose
  * by typing the command, not incur by phrasing. */
+/** The request without the mode command that chose it. Hermes reads a
+ * leading "/" as one of its own gateway commands, so "/deep …" must reach the
+ * agent as the question alone. A bare command is left as typed. */
+export function withoutModeCommand(input: string): string {
+  const stripped = input.replace(/^\s*\/(?:quick|deep|research)(?=\s)\s*/i, '');
+  return stripped.trim() ? stripped : input;
+}
+
 export function responseModeFor(input: string): ResponseMode {
   const text = input.trim().toLowerCase();
   if (/^\/quick(?:\s|$)/.test(text)) return 'quick';

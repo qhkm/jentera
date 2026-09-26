@@ -1,7 +1,30 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { modelForResponseMode, responseModeFor, routedModelNames } from '../src/runtime/response-mode';
+import { modelForResponseMode, responseModeFor, routedModelNames, withoutModeCommand } from '../src/runtime/response-mode';
 import { modelCostMicrousd } from '../src/runtime/usage';
+
+/* The command picks the mode; the agent gets the request. Hermes reads a
+   leading "/" as one of its own gateway commands, so "/deep …" must not
+   reach it as the question. */
+describe('withoutModeCommand', () => {
+  it.each([
+    ['/deep can u ask growth how to grow', 'can u ask growth how to grow'],
+    ['/research payroll rules', 'payroll rules'],
+    ['/QUICK are we open', 'are we open'],
+    ['  /deep\nline two', 'line two'],
+  ])('hands the agent the request without the command: %s', (input, expected) => {
+    expect(withoutModeCommand(input)).toBe(expected);
+  });
+
+  it.each([
+    'are we open on sunday?',
+    'what does /deep mean',
+    '/deeper thoughts',
+    '/deep',
+  ])('leaves anything else as it is: %s', (input) => {
+    expect(withoutModeCommand(input)).toBe(input);
+  });
+});
 
 describe('responseModeFor', () => {
   it.each([

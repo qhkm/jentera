@@ -3,7 +3,7 @@ import { markRuntimeReady } from '../src/agent-runtime';
 import { runTrace, startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { RunnerClient, RuntimeBusyError } from '../src/runtime/runner-client';
-import { FAILURE_NOTICES } from '../src/runtime/failure-notice';
+import { FAILURE_NOTICES, TELEGRAM_QUICK_TIMEOUT_NOTICE } from '../src/runtime/failure-notice';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
@@ -1805,6 +1805,37 @@ describe('conversation versus work', () => {
     const { record } = await completeRun(env(), { responseMode: 'quick' }, [],
       { action: 'ack', reason: 'completed' }, { status: 'failed', error: raw });
     expect(record).toMatchObject({ kind: 'conversation', status: 'failed', outcome: FAILURE_NOTICES.provider_quota });
+  });
+
+  /* Telegram has no "Give it more time" button, and "please try again" in
+     quick mode would stop in the same place. */
+  it('tells a Telegram owner to send a quick reply that ran out of time again with /deep', async () => {
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified) values ('timeout-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env(), tx, A, {
+      connector: 'telegram', method: 'bot_token', externalId: '123456789',
+      displayName: '@timeout_bot', secret: '123456789:AAtoken', connectedBy: owner.id,
+    }));
+    const edits: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('editMessageText')) {
+        edits.push((JSON.parse(String(init?.body)) as { text: string }).text);
+        return response({ ok: true, result: { message_id: 77 } });
+      }
+      return response({ ok: true, result: { message_id: 77 } });
+    }));
+    const telegram = (mode: 'quick' | 'deep') => ({
+      responseMode: mode, channel: 'telegram',
+      telegram: { connectionId: connection.id, chatId: 42, messageId: 7, from: 'Owner',
+        question: 'can u ask growth how to grow', privateChat: true, liveMessageId: 77 },
+    });
+    const expired = { status: 'expired', error: 'run deadline exceeded' };
+    try {
+      await completeRun(env(), telegram('quick'), [], { action: 'ack', reason: 'completed' }, expired);
+      expect(edits.at(-1)).toBe(TELEGRAM_QUICK_TIMEOUT_NOTICE);
+      await completeRun(env(), telegram('deep'), [], { action: 'ack', reason: 'completed' }, expired);
+      expect(edits.at(-1)).toBe(FAILURE_NOTICES.timeout);
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('records a quick reply that failed at the credit cap as conversation, not a task', async () => {

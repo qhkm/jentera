@@ -392,7 +392,9 @@ describe('the durable Hermes agent request', () => {
     expect(QUICK_RUN_CAP_SECONDS).toBe(300);
     expect(quick.instructions).toMatch(/stops after 5 minutes/);
     expect(quick.instructions).toMatch(/Do not delegate to another agent or specialist/);
-    expect(quick.instructions).toMatch(/Give it more time/);
+    // one way that works on Telegram and in the app alike
+    expect(quick.instructions).toMatch(/send it again starting with \/deep/);
+    expect(quick.instructions).not.toMatch(/Give it more time/);
     expect(deep.instructions).not.toMatch(/stops after 5 minutes/);
   });
 
