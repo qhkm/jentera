@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { openSync } from 'node:fs';
+import { closeSync, openSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -26,6 +26,7 @@ const PROFILE_DIRS = ['memories', 'sessions', 'skills', 'skins', 'logs', 'plans'
 test('Chief of Staff hands part of a task to records on the pinned Hermes', { skip: !HERMES, timeout: 180_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'handoff-e2e-'));
   const children = [];
+  let runner;
   try {
     const modelPort = 18900 + Math.floor(Math.random() * 500);
     const hermesPort = 19500 + Math.floor(Math.random() * 500);
@@ -49,7 +50,7 @@ test('Chief of Staff hands part of a task to records on the pinned Hermes', { sk
     await writeFile(join(home, 'profiles', 'records', '.env'), `OPENROUTER_API_KEY=e2e-dummy-key\nOPENROUTER_BASE_URL=http://127.0.0.1:${modelPort}/v1\n`, { mode: 0o600 });
     await writeFile(join(home, 'profiles', 'records', 'SOUL.md'), '# Finance and records (e2e)\n');
 
-    const runner = createRunner({
+    runner = createRunner({
       businessBrowser: { ensure: async () => {}, isPaused: async () => false, status: async () => ({}), preview: async () => ({}), command: async () => ({}) },
       businessId: BUSINESS, runnerKey: RUNNER_KEY, hermesKey: HERMES_KEY,
       hermesOrigin: `http://127.0.0.1:${hermesPort}`, release: 'e2e', toolMode: 'full-tools', webSearchBackend: 'ddgs',
@@ -63,12 +64,19 @@ test('Chief of Staff hands part of a task to records on the pinned Hermes', { sk
     });
     const runnerOrigin = await listen(runner);
     const gatewayLog = DEBUG_LOGS ? join(tmpdir(), 'handoff-e2e-gateway.log') : null;
-    children.push(spawn(join(HERMES, '.venv', 'bin', 'hermes'), ['gateway', 'run', '--force'], {
-      cwd: HERMES, stdio: gatewayLog ? ['ignore', openSync(gatewayLog, 'w'), openSync(gatewayLog, 'a')] : 'ignore',
-      env: { ...process.env, HERMES_HOME: home, HERMES_KANBAN_DB: join(home, 'kanban.db'),
-        API_SERVER_HOST: '127.0.0.1', API_SERVER_PORT: String(hermesPort),
-        OPENROUTER_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, JENTERA_RUNNER_URL: runnerOrigin },
-    }));
+    const gatewayLogFds = gatewayLog ? [openSync(gatewayLog, 'w'), openSync(gatewayLog, 'a')] : null;
+    try {
+      children.push(spawn(join(HERMES, '.venv', 'bin', 'hermes'), ['gateway', 'run', '--force'], {
+        cwd: HERMES, stdio: gatewayLogFds ? ['ignore', gatewayLogFds[0], gatewayLogFds[1]] : 'ignore',
+        env: { ...process.env, HERMES_HOME: home, HERMES_KANBAN_DB: join(home, 'kanban.db'),
+          API_SERVER_HOST: '127.0.0.1', API_SERVER_PORT: String(hermesPort),
+          OPENROUTER_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, JENTERA_RUNNER_URL: runnerOrigin },
+      }));
+    } finally {
+      /* spawn() dup()s these into the child; the parent's copies serve no
+         further purpose once it has started and must not leak. */
+      if (gatewayLogFds) for (const fd of gatewayLogFds) closeSync(fd);
+    }
     await waitFor(async () => (await fetch(`http://127.0.0.1:${hermesPort}/health`).catch(() => null))?.ok, 60_000);
 
     const started = await fetch(`${runnerOrigin}/v1/tasks`, {
@@ -98,19 +106,30 @@ test('Chief of Staff hands part of a task to records on the pinned Hermes', { sk
     assert.ok(events.some((event) => event.type === 'handoff' && event.stage === 'finished' && event.specialist === 'records'),
       `no finished hand-off event for records in ${JSON.stringify(events)}`);
     assert.doesNotMatch(stream, /count unpaid invoices/);
-    await close(runner);
   } finally {
-    await Promise.all(children.map((child) => new Promise((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) return resolve();
-      child.once('exit', () => resolve());
-      child.kill();
-    })));
+    /* Closed here, not only on the try block's happy path: a failed
+       assertion above must not leave the listener open, or node --test hangs
+       instead of failing fast. Already-closed (the success path may have
+       raced this) is not an error worth surfacing over a real failure. */
+    if (runner) await close(runner).catch(() => {});
+    await Promise.all(children.map((child) => killAndWait(child)));
     /* A just-killed process can still hold the directory open for a moment
        (observed as ENOTEMPTY on the gateway's home dir); a couple of retries
        clears it without masking a real assertion failure above. */
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
+
+/** SIGTERM, then SIGKILL after a short grace if the child ignores it — so
+ *  cleanup can never hang forever on a wedged gateway or model process. */
+function killAndWait(child, graceMs = 5_000) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    const timer = setTimeout(() => child.kill('SIGKILL'), graceMs);
+    child.kill();
+  });
+}
 
 function grant(taskId, overrides = {}) {
   const now = Math.floor(Date.now() / 1000);
