@@ -51,7 +51,9 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** Work recorded in [end − window, end), counted in full and listed in part. */
+/** Work recorded in [end − window, end), counted in full and listed in part.
+    Conversation is left out: a chat reply is a row too (migration 024), and
+    until 26 September "hey jentera" was counted as completed work. */
 export async function summaryReport(
   tx: postgres.TransactionSql,
   kind: 'business_summary' | 'weekly_summary',
@@ -69,12 +71,14 @@ export async function summaryReport(
            count(*) filter (where status = 'failed')::text as failed,
            coalesce(sum(minutes_saved), 0)::text as minutes
       from work_record
-     where occurred_at >= ${start.toISOString()}::timestamptz
+     where kind = 'work'
+       and occurred_at >= ${start.toISOString()}::timestamptz
        and occurred_at < ${end.toISOString()}::timestamptz`;
   const rows = await tx<{ objective: string; outcome: string | null; status: string }[]>`
     select objective, outcome, status
       from work_record
-     where occurred_at >= ${start.toISOString()}::timestamptz
+     where kind = 'work'
+       and occurred_at >= ${start.toISOString()}::timestamptz
        and occurred_at < ${end.toISOString()}::timestamptz
      order by occurred_at desc
      limit ${LINE_CAP}`;

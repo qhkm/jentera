@@ -61,11 +61,14 @@ async function create(overrides: Body = {}, cookie = cookieOwnerA): Promise<Body
   return res.body.routine as Body;
 }
 
-async function seedWork(count: number, occurredAt: string, businessId = A): Promise<void> {
+async function seedWork(
+  count: number, occurredAt: string, businessId = A, kind: 'work' | 'conversation' = 'work',
+): Promise<void> {
+  const label = kind === 'work' ? 'Task' : 'Chat';
   await asOwner(async (sql) => {
     for (let i = 0; i < count; i += 1) {
-      await sql`insert into work_record (business_id, objective, outcome, status, function, channel, occurred_at, minutes_saved)
-                values (${businessId}, ${`Task ${i + 1}`}, ${`Done ${i + 1}`}, 'completed', 'assistant', 'telegram', ${occurredAt}::timestamptz, 3)`;
+      await sql`insert into work_record (business_id, objective, outcome, status, function, channel, occurred_at, minutes_saved, kind)
+                values (${businessId}, ${`${label} ${i + 1}`}, ${`Done ${i + 1}`}, 'completed', 'assistant', 'telegram', ${occurredAt}::timestamptz, 3, ${kind})`;
     }
   });
 }
@@ -398,6 +401,22 @@ describe('run now', () => {
     expect(list.body.routines[0].lastOccurrence.id).toBe(res.body.occurrence.id);
     // running now neither resumes nor moves the schedule
     expect(list.body.routines[0].nextRunAt).toBe(routine.nextRunAt);
+  });
+
+  it('leaves conversation out of a business summary: chat replies are not work', async () => {
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    await seedWork(2, hourAgo);
+    await seedWork(5, hourAgo, A, 'conversation');
+    const routine = await create();
+    const res = await call('POST', `/api/routines/${routine.id}/run`, cookieOwnerA,
+      { requestId: uuid(), expectedRevision: 1 });
+    expect(res.status).toBe(202);
+
+    const { request, url } = req('GET', `/api/runs/${res.body.occurrence.runId}`, { cookie: cookieOwnerA });
+    const detail = (await (await handleRuns(request, env, url, cors))!.json()) as Body;
+    expect(detail.text).toContain('2 pieces of work recorded: 2 completed, 0 failed. 6 minutes saved.');
+    expect(detail.text).toContain('Completed: Task 1');
+    expect(detail.text).not.toContain('Chat 1');
   });
 
   it('records a reminder with nothing pending as skipped, and counts pending approvals otherwise', async () => {
