@@ -80,7 +80,8 @@ export default function BookingsApp({ bookingId, section, onSection, onBack, onC
       />}
       <div role={installed ? 'tabpanel' : undefined} id={installed ? `bookings-panel-${active}` : undefined}
         aria-labelledby={installed ? `bookings-tab-${active}` : undefined} className="bookings-panel">
-        {active === 'bookings' && <BookingsList api={api} bookingId={bookingId} onConnectCalendar={onConnectCalendar} />}
+        {active === 'bookings' && <BookingsList api={api} bookingId={bookingId} onConnectCalendar={onConnectCalendar}
+          blocks={config?.blocks} calendarProtection={config?.calendarProtection} />}
         {active !== 'bookings' && !config && !failed && <LoadingState title={t('bookings.config.loading')} />}
         {active === 'page' && config && <BookingPage api={api} config={config} onChange={saved} onReload={reload} />}
         {active === 'settings' && config && <BookingsSettings key={config.version ?? 'new'} api={api} config={config} onSaved={saved} onReload={reload} />}

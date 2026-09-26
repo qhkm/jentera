@@ -13,10 +13,12 @@ import {
 import { keys, mutationKeys } from '@/lib/query/keys';
 import { useRequiredBusinessId } from '@/lib/query/scope';
 import { malaysiaDay } from '@/lib/daily-brief';
-import type { AppsApi, Booking, BookingAction } from '@/lib/apps/types';
+import type { AppsApi, Booking, BookingAction, BookingBlock, BookingsConfig } from '@/lib/apps/types';
 import BookingCard from './BookingCard';
+import BookingsCalendar, { mondayOf, type CalendarSpan } from './BookingsCalendar';
 
 type Filter = 'needs' | 'today' | 'upcoming' | 'date';
+type View = 'list' | 'calendar';
 type BookingKey = ReturnType<typeof keys.booking>;
 const POLL_MS = 10_000;
 /** Upcoming reaches 90 days ahead in three windows. */
@@ -30,10 +32,12 @@ const pollWhileSyncing = (query: { state: { data?: Booking } }) =>
 const unlessNotFound = (query: { state: { error: unknown } }) =>
   !(query.state.error instanceof AppsError && query.state.error.status === 404);
 
-export default function BookingsList({ api, bookingId, onConnectCalendar, now = () => new Date() }: {
+export default function BookingsList({ api, bookingId, onConnectCalendar, blocks = [], calendarProtection = null, now = () => new Date() }: {
   api: AppsApi;
   bookingId: string | null;
   onConnectCalendar: () => void;
+  blocks?: BookingBlock[];
+  calendarProtection?: BookingsConfig['calendarProtection'] | null;
   now?: () => Date;
 }) {
   const { t, lang } = useI18n();
@@ -47,6 +51,10 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   const filter: Filter = chosen ?? 'today';
   const [offset, setOffset] = useState(0);
   const [date, setDate] = useState(() => malaysiaDay(now()));
+  const [view, setView] = useState<View>('list');
+  const [calendarSpan, setCalendarSpan] = useState<CalendarSpan>('week');
+  const [calendarDate, setCalendarDate] = useState(() => malaysiaDay(now()));
+  const [calendarBookingId, setCalendarBookingId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, string>>({});
   /** Bookings confirmed, declined or cancelled here, for the window they
       were decided in (`scope`). Choosing another window starts afresh. */
@@ -67,10 +75,12 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   }, [chosen, apps.pending, apps.error]);
 
   const today = malaysiaDay(clock.current());
-  const range = filter === 'upcoming' ? { from: addDays(today, offset), days: WINDOW_DAYS }
+  const listRange = filter === 'upcoming' ? { from: addDays(today, offset), days: WINDOW_DAYS }
     : filter === 'date' ? { from: date, days: 1 } : { from: today, days: 1 };
-  const needs = filter === 'needs';
-  const scope = needs ? 'needs' : `${range.from}/${range.days}`;
+  const calendarRange = { from: calendarSpan === 'week' ? mondayOf(calendarDate) : calendarDate, days: calendarSpan === 'week' ? 7 : 1 };
+  const range = view === 'calendar' ? calendarRange : listRange;
+  const needs = view === 'list' && filter === 'needs';
+  const scope = needs ? 'needs' : `${view}/${range.from}/${range.days}`;
   const kept = useMemo(() => new Set(decided.scope === scope ? decided.ids : []), [decided, scope]);
 
   /* Needs you is the shared waiting-requests query (useApps), so opening it
@@ -78,7 +88,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
      Nothing is asked for until the default filter is decided. */
   const windowRead = useQuery({
     ...bookingWindowQuery(api, businessId, range.from, range.days),
-    enabled: chosen !== null && !needs,
+    enabled: view === 'calendar' || (chosen !== null && !needs),
   });
   /* Opening Needs you also watches that shared query, as any screen showing
      it does, so a scan older than 30 s is refreshed once in the background
@@ -88,7 +98,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   useQuery({ ...pendingBookingsQuery(api, businessId), enabled: needs && waitingInList });
   /* Nothing is shown before the default filter is decided: until then the
      window query above is Today's, and its cache is not what will open. */
-  const list: Booking[] | null = chosen === null ? null : needs ? apps.pending : windowRead.data ?? null;
+  const list: Booking[] | null = view === 'list' && chosen === null ? null : needs ? apps.pending : windowRead.data ?? null;
   const listUpdatedAt = needs
     ? client.getQueryState(keys.pendingBookings(businessId))?.dataUpdatedAt ?? 0
     : windowRead.dataUpdatedAt;
@@ -136,7 +146,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
     : null;
 
   /* A read in flight after a failure shows the loading state again. */
-  const failed = chosen !== null && (needs
+  const failed = (view === 'calendar' || chosen !== null) && (needs
     ? apps.error && apps.pending === null && !apps.loading
     : windowRead.isError && windowRead.data === undefined && !windowRead.isFetching);
 
@@ -219,10 +229,20 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   /* The empty text follows the loaded rows, not the rows left once the
      pinned card is taken out of them. */
   const shown = (rows ?? []).filter((booking) => booking.id !== focused?.id);
+  const calendarBooking = view === 'calendar' && calendarBookingId
+    ? (rows ?? []).find((booking) => booking.id === calendarBookingId) ?? null : null;
   const waiting = apps.pending?.length ?? 0;
 
   return <div className="bookings-list">
-    <div className="bookings-filters" role="group" aria-label={t('bookings.filters')}>
+    <div className="bookings-view-toolbar">
+      <div className="bookings-view-switch" role="group" aria-label={t('bookings.view.label')}>
+        {(['list', 'calendar'] as const).map((option) => <button key={option} type="button" className={view === option ? 'active' : ''}
+          aria-pressed={view === option} onClick={() => { setView(option); setCalendarBookingId(null); forgetDecided(); }}>
+          {t(`bookings.view.${option}`)}
+        </button>)}
+      </div>
+    </div>
+    {view === 'list' && <div className="bookings-filters" role="group" aria-label={t('bookings.filters')}>
       {(['needs', 'today', 'upcoming'] as const).map((option) => <Chip key={option} active={filter === option} aria-pressed={filter === option}
         onClick={() => { if (option !== filter || offset !== 0) forgetDecided(); setChosen(option); setOffset(0); }}>
         {t(`bookings.filter.${option}`)}{option === 'needs' && waiting > 0 ? ` (${waiting})` : ''}
@@ -236,7 +256,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
             setChosen('date');
           }} />
       </label>
-    </div>
+    </div>}
     {focused && <section className="bookings-focused" aria-labelledby="bookings-focused-title">
       <h2 id="bookings-focused-title">{t('bookings.focused')}</h2>
       {card(focused)}
@@ -247,13 +267,28 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       <Button variant="outline" onClick={retry}>{t('apps.retry')}</Button>
     </Card>}
     {!failed && rows === null && <LoadingState title={t('bookings.loading')} />}
-    {rows !== null && rows.length === 0 && <p className="bookings-empty">{t(`bookings.empty.${filter}`)}</p>}
-    {rows !== null && shown.length > 0 && (filter === 'upcoming'
+    {view === 'list' && rows !== null && rows.length === 0 && <p className="bookings-empty">{t(`bookings.empty.${filter}`)}</p>}
+    {view === 'list' && rows !== null && shown.length > 0 && (filter === 'upcoming'
       ? groupByDay(shown).map(([day, group]) => <section key={day} className="bookings-day-group" aria-label={dayTitle(day)}>
         <h3>{dayTitle(day)}</h3>{group.map(card)}
       </section>)
       : <div className="bookings-cards">{shown.map(card)}</div>)}
-    {filter === 'upcoming' && <div className="bookings-window">
+    {view === 'calendar' && rows !== null && <>
+      <BookingsCalendar anchor={calendarDate} span={calendarSpan} today={today} rows={shown} blocks={blocks}
+        calendarProtection={calendarProtection} selectedId={calendarBookingId}
+        onSelect={setCalendarBookingId}
+        onNavigate={(direction) => { setCalendarBookingId(null); forgetDecided(); setCalendarDate((current) => addDays(calendarSpan === 'week' ? mondayOf(current) : current, direction * (calendarSpan === 'week' ? 7 : 1))); }}
+        onToday={() => { setCalendarBookingId(null); forgetDecided(); setCalendarDate(today); }}
+        onSpan={(span) => { setCalendarBookingId(null); forgetDecided(); setCalendarSpan(span); }} />
+      {calendarBooking && <section className="bookings-calendar-detail" aria-labelledby="bookings-calendar-detail-title">
+        <div className="bookings-calendar-detail-heading">
+          <h2 id="bookings-calendar-detail-title">{t('bookings.calendarView.details')}</h2>
+          <button type="button" onClick={() => setCalendarBookingId(null)}>{t('bookings.calendarView.close')}</button>
+        </div>
+        {card(calendarBooking)}
+      </section>}
+    </>}
+    {view === 'list' && filter === 'upcoming' && <div className="bookings-window">
       <Button variant="ghost" disabled={offset === UPCOMING_OFFSETS[0]}
         onClick={() => { forgetDecided(); setOffset((value) => UPCOMING_OFFSETS[Math.max(0, UPCOMING_OFFSETS.indexOf(value) - 1)]); }}>{t('bookings.window.earlier')}</Button>
       <span>{t('bookings.window.range', { from: dayTitle(addDays(today, offset)), to: dayTitle(addDays(today, offset + WINDOW_DAYS - 1)) })}</span>

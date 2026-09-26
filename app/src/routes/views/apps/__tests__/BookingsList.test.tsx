@@ -6,8 +6,8 @@ import BookingsList from '../BookingsList';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
 import { AppsError } from '@/lib/apps/api';
-import { BOOKING_ID, bookingFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
-import type { Booking, BookingsQuery } from '@/lib/apps/types';
+import { BOOKING_ID, bookingFixture, configFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
+import type { Booking, BookingBlock, BookingsConfig, BookingsQuery } from '@/lib/apps/types';
 import { createQueryClient } from '@/lib/query/client';
 import { focusApp, renderWithQuery, returnToApp } from '@/test-support/query';
 
@@ -26,7 +26,12 @@ const serve = (pending: Booking[], window: Booking[] = []) =>
    RepositoryProvider above it — so every mount passes a repository, and
    renderWithQuery flushes LocalRepository.load()'s microtask before the
    first assertion. Pass `client` to mount again over the same cache. */
-async function mount(api: ReturnType<typeof fakeAppsApi>, bookingId: string | null = null, options: { delay?: number | null; client?: QueryClient } = {}) {
+async function mount(api: ReturnType<typeof fakeAppsApi>, bookingId: string | null = null, options: {
+  delay?: number | null;
+  client?: QueryClient;
+  blocks?: BookingBlock[];
+  calendarProtection?: BookingsConfig['calendarProtection'];
+} = {}) {
   const onConnectCalendar = vi.fn();
   /* `delay: null` when a test needs to click under fake timers — userEvent's
      default pacing waits on real setTimeout, which fake timers never fire
@@ -34,13 +39,37 @@ async function mount(api: ReturnType<typeof fakeAppsApi>, bookingId: string | nu
      component's own poll. */
   const user = userEvent.setup(options.delay !== undefined ? { delay: options.delay } : undefined);
   const view = await renderWithQuery(<AppsProvider api={api}>
-    <BookingsList api={api} bookingId={bookingId} onConnectCalendar={onConnectCalendar} now={() => NOW} />
+    <BookingsList api={api} bookingId={bookingId} onConnectCalendar={onConnectCalendar} now={() => NOW}
+      blocks={options.blocks} calendarProtection={options.calendarProtection} />
   </AppsProvider>, { repository: new LocalRepository(), client: options.client });
   return { onConnectCalendar, user, client: view.client, unmount: view.unmount };
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('BookingsList', () => {
+  it('switches to a week calendar, shows closures, and opens the selected booking actions', async () => {
+    const confirmed = bookingFixture({ status: 'confirmed' });
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [confirmed]) });
+    const block = { id: 'block-1', label: 'Team away', startsAt: '2026-10-07T00:00:00.000Z', endsAt: '2026-10-07T04:00:00.000Z' };
+    const { user } = await mount(api, null, {
+      blocks: [block], calendarProtection: configFixture().calendarProtection,
+    });
+    await screen.findByRole('article', { name: 'Aisyah' });
+
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+    const calendarView = await screen.findByRole('region', { name: 'Booking calendar' });
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-10-05', days: 7 })));
+    expect(within(calendarView).getByText('Team away')).toBeInTheDocument();
+    expect(within(calendarView).getByText(/Google Calendar protection is active/)).toBeInTheDocument();
+
+    await user.click(within(calendarView).getByRole('button', { name: /Aisyah/ }));
+    const detail = screen.getByRole('article', { name: 'Aisyah' });
+    expect(within(detail).getByRole('button', { name: 'Cancel booking' })).toBeInTheDocument();
+
+    await user.click(within(calendarView).getByRole('button', { name: 'Day' }));
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-10-05', days: 1 })));
+  });
+
   it('opens on Needs you, and a confirm shows the WhatsApp link and Syncing at once', async () => {
     const confirmed = bookingFixture({ status: 'confirmed', whatsappUrl: WA, calendar: calendar('pending') });
     const api = fakeAppsApi({
