@@ -78,6 +78,14 @@ function originOf(url: string): string | null {
   }
 }
 
+function previewAccentInk(value: string): '#080808' | '#ffffff' {
+  if (!BRAND_COLOR.test(value)) return '#080808';
+  const r = Number.parseInt(value.slice(1, 3), 16);
+  const g = Number.parseInt(value.slice(3, 5), 16);
+  const b = Number.parseInt(value.slice(5, 7), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? '#080808' : '#ffffff';
+}
+
 function newService(): ServiceDraft {
   return {
     key: `new-${++draftKeys}`, id: null, name: '', description: '', durationMinutes: 60, capacity: 1, priceLabel: '', active: true,
@@ -300,6 +308,10 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     { id: 'blocks', label: t('bookings.settings.blocks'), navLabel: t('bookings.settings.nav.blocks'), meta: blocks.length ? String(blocks.length) : undefined },
   ];
   const previewServices = services.filter((service) => service.active).slice(0, 3);
+  const previewService = previewServices.length === 1 ? previewServices[0] : null;
+  const previewWeekdays = lang === 'bm' ? ['ISN', 'SEL', 'RAB', 'KHA', 'JUM', 'SAB', 'AHA'] : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  const previewDays: Array<number | null> = [null, null, null, ...Array.from({ length: 31 }, (_, day) => day + 1)];
+  const previewTimes = lang === 'bm' ? ['9.00 pagi', '10.00 pagi', '11.00 pagi'] : ['9:00 am', '10:00 am', '11:00 am'];
 
   return <form className="bookings-settings" onSubmit={(event) => void save(event)} noValidate>
     {!installed && <>
@@ -464,31 +476,55 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     {error('slug')}
     </div>
     <aside className="bookings-live-preview" aria-label={t('bookings.settings.preview.title')}
-      style={{ '--booking-preview-accent': BRAND_COLOR.test(brandColor) ? brandColor : '#4aebb5' } as CSSProperties}>
+      style={{
+        '--booking-preview-accent': BRAND_COLOR.test(brandColor) ? brandColor : '#4aebb5',
+        '--booking-preview-accent-ink': previewAccentInk(brandColor),
+      } as CSSProperties}>
       <header>
         <div><strong>{t('bookings.settings.preview.title')}</strong><span>{t('bookings.settings.preview.help')}</span></div>
         <small>{t('bookings.settings.preview.live')}</small>
       </header>
       <div className={`bookings-preview-frame is-${pageTheme}`}>
         <div className="bookings-preview-business">
-          <div className="bookings-preview-logo">
-            {config.settings?.logoUrl
-              ? <img src={config.settings.logoUrl} alt="" />
-              : <span aria-hidden="true">{Array.from(business.name.trim())[0]?.toUpperCase()}</span>}
+          <div className="bookings-preview-identity">
+            <div className="bookings-preview-logo">
+              {config.settings?.logoUrl
+                ? <img src={config.settings.logoUrl} alt="" />
+                : <span aria-hidden="true">{Array.from(business.name.trim())[0]?.toUpperCase()}</span>}
+            </div>
+            <strong>{business.name}</strong>
           </div>
-          <div><strong>{business.name}</strong><span>{location.trim() || t('bookings.settings.preview.locationFallback')}</span></div>
+          {previewService && <div className="bookings-preview-service-context">
+            <h5>{previewService.name.trim() || t('bookings.settings.service')}</h5>
+            <span>{t('bookings.settings.minutes', { n: previewService.durationMinutes })}{previewService.priceLabel.trim() ? ` · ${previewService.priceLabel.trim()}` : ''}</span>
+            {previewService.description.trim() && <p>{previewService.description.trim()}</p>}
+            {(welcomeTitle.trim() || welcomeMessage.trim()) && <div className="bookings-preview-welcome">
+              {welcomeTitle.trim() && <strong>{welcomeTitle.trim()}</strong>}
+              {welcomeMessage.trim() && <p>{welcomeMessage.trim()}</p>}
+            </div>}
+          </div>}
+          <small className="bookings-preview-location">⌖ {location.trim() || t('bookings.settings.preview.locationFallback')}</small>
         </div>
-        <div className="bookings-preview-progress" aria-hidden="true"><i /><i /><i /><i /></div>
         <div className="bookings-preview-content">
-          <h5>{welcomeTitle.trim() || t('bookings.settings.preview.choose')}</h5>
-          <p>{welcomeMessage.trim() || t('bookings.settings.preview.chooseHelp')}</p>
-          <div className="bookings-preview-services">
-            {previewServices.length ? previewServices.map((service) => <div key={service.key}>
+          {previewService ? <>
+            <h5>{t('bookings.settings.preview.chooseTime')}</h5>
+            <div className="bookings-preview-calendar">
+              <strong>{t('bookings.settings.preview.month')}</strong><span aria-hidden="true">‹ &nbsp; ›</span>
+              <div className="bookings-preview-weekdays" aria-hidden="true">{previewWeekdays.map((day) => <i key={day}>{day}</i>)}</div>
+              <div className="bookings-preview-days" aria-hidden="true">{previewDays.map((day, index) => day === null
+                ? <i key={`blank-${index}`} />
+                : <i key={day} className={day === 6 ? 'selected' : day % 7 === 3 || day % 7 === 4 ? 'closed' : ''}>{day}</i>)}</div>
+            </div>
+            <div className="bookings-preview-times">{previewTimes.map((time) => <span key={time}>{time}</span>)}</div>
+          </> : previewServices.length ? <>
+            <h5>{welcomeTitle.trim() || t('bookings.settings.preview.choose')}</h5>
+            <p>{welcomeMessage.trim() || t('bookings.settings.preview.chooseHelp')}</p>
+            <div className="bookings-preview-services">{previewServices.map((service) => <div key={service.key}>
               <span><strong>{service.name.trim() || t('bookings.settings.service')}</strong>
                 <small>{t('bookings.settings.minutes', { n: service.durationMinutes })}{service.priceLabel.trim() ? ` · ${service.priceLabel.trim()}` : ''}</small></span>
               <b aria-hidden="true">→</b>
-            </div>) : <div className="bookings-preview-empty">{t('bookings.settings.preview.empty')}</div>}
-          </div>
+            </div>)}</div>
+          </> : <div className="bookings-preview-empty">{t('bookings.settings.preview.empty')}</div>}
         </div>
       </div>
     </aside>

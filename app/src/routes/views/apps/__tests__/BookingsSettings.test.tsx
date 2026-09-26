@@ -80,7 +80,11 @@ describe('BookingsSettings', () => {
     const { onSaved, user } = await mount(configFixture(), api);
     await user.click(screen.getByRole('button', { name: 'Booking page' }));
     expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Cupping class');
+    const preview = screen.getByLabelText('Customer preview');
+    expect(preview).toHaveTextContent('Cupping class');
+    expect(preview.querySelector('.bookings-preview-calendar')).toBeInTheDocument();
+    expect(preview.querySelector('.bookings-preview-times')).toBeInTheDocument();
+    expect(preview.querySelector('.bookings-preview-progress')).toBeNull();
     await user.click(screen.getByRole('button', { name: '#62a8ff' }));
     expect(screen.getByLabelText('Customer preview')).toHaveStyle({ '--booking-preview-accent': '#62a8ff' });
     await user.click(screen.getByRole('button', { name: 'Light' }));
@@ -91,6 +95,18 @@ describe('BookingsSettings', () => {
     expect(onSaved).toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ brandColor: '#62a8ff', pageTheme: 'light' }));
+  });
+
+  it('previews service selection when more than one active service is available', async () => {
+    const first = configFixture().services[0];
+    const config = configFixture({ services: [first, { ...first, id: '22222222-2222-4222-8222-222222222222', name: 'Follow-up session' }] });
+    const { user } = await mount(config);
+    await user.click(screen.getByRole('button', { name: 'Booking page' }));
+    const preview = screen.getByLabelText('Customer preview');
+    expect(preview.querySelector('.bookings-preview-calendar')).toBeNull();
+    expect(preview.querySelectorAll('.bookings-preview-services > div')).toHaveLength(2);
+    expect(preview).toHaveTextContent('Choose a service');
+    expect(preview).toHaveTextContent('Follow-up session');
   });
 
   it('saves the customer change deadline and explains reminder delivery accurately', async () => {
