@@ -7,6 +7,13 @@ import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
 import { configFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 import { renderWithQuery, returnToApp } from '@/test-support/query';
+import type { AppsList, BookingsConfig } from '@/lib/apps/types';
+
+/** The apps list as Home has it once Bookings is installed, nothing waiting. */
+const INSTALLED: AppsList = {
+  apps: [{ key: 'bookings', state: 'active', accepting: true, publicUrl: 'https://sites.test/b/seido', pending: 0 }],
+  available: ['bookings'],
+};
 
 async function mount(api = fakeAppsApi(), section: string | null = null, client?: QueryClient) {
   const repo = new LocalRepository();
@@ -104,6 +111,49 @@ describe('BookingsApp', () => {
     await returnToApp(client);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     expect(screen.getByLabelText('Where the booking takes place')).toHaveValue('Level 2, Wisma Kita');
+  });
+
+  /* Opening Bookings from Home: the apps list there already says it is
+     installed, so today's bookings are asked for at once, not after the
+     settings have arrived. Measured live on 26 September: the list waited
+     for the settings, 431 ms to content where the two together take ~230. */
+  it('asks for the bookings alongside the settings when the apps list says Bookings is installed', async () => {
+    let settle!: (config: BookingsConfig) => void;
+    const api = fakeAppsApi({
+      list: vi.fn(async () => INSTALLED),
+      bookingsConfig: vi.fn(() => new Promise<BookingsConfig>((resolve) => { settle = resolve; })),
+    });
+    await mount(api);
+    expect(await screen.findByText('No bookings today.')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Bookings', selected: true })).toBeInTheDocument();
+    await act(async () => settle(configFixture()));
+    expect(screen.getByText('No bookings today.')).toBeInTheDocument();
+    expect(api.bookings).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the bookings when the settings cannot be read, and offers to try again', async () => {
+    const api = fakeAppsApi({
+      list: vi.fn(async () => INSTALLED),
+      bookingsConfig: vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValue(configFixture()),
+    });
+    const { user } = await mount(api);
+    expect(await screen.findByText('Could not load Bookings.')).toBeInTheDocument();
+    expect(await screen.findByText('No bookings today.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.queryByText('Could not load Bookings.')).toBeNull());
+    expect(screen.getByText('No bookings today.')).toBeInTheDocument();
+    expect(api.bookingsConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for the settings before showing the booking page tab', async () => {
+    const api = fakeAppsApi({
+      list: vi.fn(async () => INSTALLED),
+      bookingsConfig: vi.fn(() => new Promise<BookingsConfig>(() => {})),
+    });
+    await mount(api, 'page');
+    expect(await screen.findByRole('tab', { name: 'Booking page', selected: true })).toBeInTheDocument();
+    expect(screen.getByText('Loading Bookings…')).toBeInTheDocument();
+    expect(api.bookings).not.toHaveBeenCalled();
   });
 
   it('reads the settings again on a return to the app while another tab is open', async () => {

@@ -41,7 +41,12 @@ export default function BookingsApp({ bookingId, section, onSection, onBack, onC
   const failed = read.isError && !config && !read.isFetching;
   const reload = () => { void read.refetch(); };
 
-  const installed = config?.installation != null;
+  /* The apps list, already loaded for Home, knows Bookings is installed
+     before the settings arrive, so the list opens at once and asks for its
+     bookings alongside them rather than after. Once the settings land they
+     decide. Nothing on the Bookings tab needs them. */
+  const listed = apps.list?.apps.some((app) => app.key === 'bookings') ?? false;
+  const installed = config ? config.installation != null : listed;
   const active: BookingsSection = !installed ? 'settings' : section === 'page' || section === 'settings' ? section : 'bookings';
 
   /* The save itself put the answer in the cache and refreshed the apps
@@ -60,8 +65,8 @@ export default function BookingsApp({ bookingId, section, onSection, onBack, onC
       <p>{t('bookings.config.error')}</p>
       <Button variant="outline" onClick={reload}>{t('apps.retry')}</Button>
     </Card>}
-    {!failed && !config && <LoadingState title={t('bookings.config.loading')} />}
-    {config && <>
+    {!failed && !config && !installed && <LoadingState title={t('bookings.config.loading')} />}
+    {(config || installed) && <>
       {installed && <Tabs<BookingsSection>
         tabs={[
           { id: 'bookings', label: t('bookings.tab.bookings') },
@@ -76,8 +81,9 @@ export default function BookingsApp({ bookingId, section, onSection, onBack, onC
       <div role={installed ? 'tabpanel' : undefined} id={installed ? `bookings-panel-${active}` : undefined}
         aria-labelledby={installed ? `bookings-tab-${active}` : undefined} className="bookings-panel">
         {active === 'bookings' && <BookingsList api={api} bookingId={bookingId} onConnectCalendar={onConnectCalendar} />}
-        {active === 'page' && <BookingPage api={api} config={config} onChange={saved} onReload={reload} />}
-        {active === 'settings' && <BookingsSettings key={config.version ?? 'new'} api={api} config={config} onSaved={saved} onReload={reload} />}
+        {active !== 'bookings' && !config && !failed && <LoadingState title={t('bookings.config.loading')} />}
+        {active === 'page' && config && <BookingPage api={api} config={config} onChange={saved} onReload={reload} />}
+        {active === 'settings' && config && <BookingsSettings key={config.version ?? 'new'} api={api} config={config} onSaved={saved} onReload={reload} />}
       </div>
     </>}
   </section>;
