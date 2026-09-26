@@ -653,7 +653,7 @@ async function telegramWebhook(
      after pairing and before admission, so it never costs a paid run. */
   if (incoming.voice) {
     const refusal = runtimeExecutionEnabled(env)
-      ? voiceRefusal(incoming.voice, token)
+      ? voiceRefusal(incoming.voice)
       : unreadableReply('voice');
     if (refusal) {
       await sendMessage(token, incoming.chatId, refusal).catch(() => {});

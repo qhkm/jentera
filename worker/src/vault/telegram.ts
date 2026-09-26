@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { callVault, VaultUnavailable } from './client';
+import { callVault, callVaultRaw, VaultUnavailable } from './client';
 
 export type TelegramCredential = string | {
   kind: 'vault';
@@ -44,6 +44,20 @@ export async function callVaultTelegram(
   return new Response(JSON.stringify(upstream.body), {
     status: upstream.status,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+}
+
+/** A file the paired owner sent a vault-held bot, fetched by the vault: the
+    answer is the bytes (200), 413 over `maxBytes`, or a JSON refusal. The
+    token, the file URL and Telegram's file path stay in the vault. */
+export async function fetchVaultTelegramFile(
+  credential: Exclude<TelegramCredential, string>,
+  fileId: string,
+  maxBytes: number,
+): Promise<Response> {
+  return callVaultRaw(credential.env, `/v1/telegram/${credential.secretId}/file`, {
+    method: 'POST',
+    body: { businessId: credential.businessId, fileId, maxBytes },
   });
 }
 

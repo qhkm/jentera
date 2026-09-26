@@ -25,15 +25,30 @@ export async function callVault<T>(
   path: string,
   init: { method?: 'GET' | 'POST' | 'DELETE'; body?: Record<string, unknown> } = {},
 ): Promise<VaultResponse<T>> {
+  const response = await callVaultRaw(env, path, init);
+  let body: T;
+  try {
+    body = await response.json() as T;
+  } catch {
+    throw new VaultUnavailable('Secure credential service returned an invalid response');
+  }
+  return { status: response.status, body };
+}
+
+/** `callVault` without reading the body: for a route that answers in bytes,
+    such as a Telegram file download. */
+export async function callVaultRaw(
+  env: Env,
+  path: string,
+  init: { method?: 'GET' | 'POST' | 'DELETE'; body?: Record<string, unknown> } = {},
+): Promise<Response> {
   const token = env.VAULT_INTERNAL_TOKEN?.trim();
   if (!env.VAULT || !token) throw new VaultUnavailable();
   if (!path.startsWith('/v1/') || path.includes('://')) {
     throw new Error('invalid vault route');
   }
-
-  let response: Response;
   try {
-    response = await env.VAULT.fetch(new Request(`https://vault.internal${path}`, {
+    return await env.VAULT.fetch(new Request(`https://vault.internal${path}`, {
       method: init.method ?? 'GET',
       headers: {
         'X-Vault-Internal': token,
@@ -44,12 +59,4 @@ export async function callVault<T>(
   } catch {
     throw new VaultUnavailable();
   }
-
-  let body: T;
-  try {
-    body = await response.json() as T;
-  } catch {
-    throw new VaultUnavailable('Secure credential service returned an invalid response');
-  }
-  return { status: response.status, body };
 }

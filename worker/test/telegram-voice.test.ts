@@ -12,12 +12,36 @@ let sent: string[];
 let events: string[];
 let transcribe: ReturnType<typeof vi.fn>;
 
+const VAULT_SECRET = '44444444-4444-4444-8444-444444444444';
+/** Paths the fake vault was asked for, in order. */
+let vaultCalls: string[];
+
 async function setup(transcript: string, options: {
-  fileSize?: number; failDownload?: boolean; busy?: boolean; release?: string;
+  fileSize?: number; failDownload?: boolean; busy?: boolean; release?: string; vault?: boolean;
 } = {}) {
-  const { fileSize = 4, failDownload = false, busy = true, release = '2026.08.27-1' } = options;
+  const { fileSize = 4, failDownload = false, busy = true, release = '2026.08.27-1', vault = false } = options;
   transcribe = vi.fn(async () => { events.push('transcribe'); return { text: transcript }; });
-  const env = testEnv({ RUNTIME_RELEASE: release, AISAR_MODEL_NAME: 'MiniMax-M3' });
+  vaultCalls = [];
+  /* A vault-held bot: the Worker holds no token and every Telegram call,
+     the file download included, goes through the vault's service binding. */
+  const vaultBinding = {
+    fetch: async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      vaultCalls.push(path);
+      const body = await request.json() as { path?: string; payload?: { text?: string } };
+      if (path.endsWith('/file')) return new Response(new Uint8Array([0x4f, 0x67, 0x67, 0x53]));
+      if (body.path === '/sendChatAction') events.push('typing');
+      if (body.path === '/sendMessage' && body.payload?.text) {
+        sent.push(body.payload.text);
+        events.push(body.payload.text);
+      }
+      return Response.json({ ok: true, result: { message_id: 90 } });
+    },
+  };
+  const env = testEnv({
+    RUNTIME_RELEASE: release, AISAR_MODEL_NAME: 'MiniMax-M3',
+    ...(vault ? { VAULT_INTERNAL_TOKEN: 'vault-internal-test', VAULT: vaultBinding as never } : {}),
+  });
   env.AI = { run: transcribe } as unknown as typeof env.AI;
   const provider = new LocalRuntimeProvider();
   await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
@@ -28,6 +52,9 @@ async function setup(transcript: string, options: {
     connector: 'telegram', method: 'bot_token', externalId: '123456789',
     displayName: '@voice_bot', secret: '123456789:AAtoken', connectedBy: owner.id,
   }));
+  if (vault) {
+    await asOwner((sql) => sql`update connection set vault_secret_id = ${VAULT_SECRET} where id = ${connection.id}`);
+  }
   /* Hold the runtime busy so admission commits and the task waits: most of
      these tests are about what admission records, not about the run. */
   if (busy) {
@@ -122,6 +149,19 @@ describe('a Telegram voice note', () => {
         from runtime_task t join run r on r.id = t.run_id where r.business_id = ${A} and t.kind = 'run'`);
     expect(task.mode).toBe('deep');
     expect(task.input.startsWith(agentText)).toBe(true);
+  });
+
+  /* A vault-held bot kept the stopgap "can't listen yet" until the vault
+     could fetch a file (aisar-vault POST /v1/telegram/<id>/file). */
+  it('hears a voice note sent to a vault-held bot, through the vault', async () => {
+    const { env, provider, intake } = await setup('Semak stok minyak.', { vault: true });
+    await handleRuntimeQueueMessage(env, intake(16), { provider });
+    expect(vaultCalls).toContain(`/v1/telegram/${VAULT_SECRET}/file`);
+    expect(transcribe).toHaveBeenCalledOnce();
+    expect(sent[0]).toBe('🎤 “Semak stok minyak.”');
+    const runs = await asOwner((sql) => sql<{ question: string }[]>`
+      select trigger_ref->>'question' as question from run where business_id = ${A} and trigger_ref->>'input' = 'voice'`);
+    expect(runs).toEqual([{ question: 'Semak stok minyak.' }]);
   });
 
   it('asks the owner to type a note it could not make out, and starts no run', async () => {

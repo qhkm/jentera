@@ -14,6 +14,7 @@
 import { sanitizePublicRuntimeText } from '../runtime/public-output';
 import {
   callVaultTelegram,
+  fetchVaultTelegramFile,
   isVaultTelegramCredential,
   type TelegramCredential,
 } from '../vault/telegram';
@@ -164,16 +165,24 @@ export const TELEGRAM_FILE_MAX_BYTES = 20 * 1024 * 1024;
 
 export class TelegramFileTooLarge extends Error {}
 
-/** The bytes of a file the owner sent, for a bot whose token the worker holds.
-    A file URL is `…/file/bot<token>/<path>`: it is built here, used once and
-    never logged, and no error from here carries it. A vault-held bot cannot
-    use this; the vault has no file route yet. `getFile` is asked each time
-    because Telegram keeps a path valid for an hour only. */
+/** The bytes of a file the owner sent. A file URL is `…/file/bot<token>/<path>`:
+    for a bot whose token the worker holds it is built here, used once and
+    never logged, and no error from here carries it; for a vault-held bot the
+    vault fetches the file and only the bytes come back. `getFile` is asked
+    each time because Telegram keeps a path valid for an hour only. */
 export async function downloadTelegramFile(
-  token: string,
+  token: TelegramCredential,
   fileId: string,
   maxBytes = TELEGRAM_FILE_MAX_BYTES,
 ): Promise<Uint8Array> {
+  if (isVaultTelegramCredential(token)) {
+    const answer = await fetchVaultTelegramFile(token, fileId, maxBytes);
+    if (answer.status === 413) throw new TelegramFileTooLarge('that file is over the download limit');
+    if (answer.status !== 200) throw new Error('Telegram would not send that file');
+    const bytes = new Uint8Array(await answer.arrayBuffer());
+    if (bytes.byteLength > maxBytes) throw new TelegramFileTooLarge('that file is over the download limit');
+    return bytes;
+  }
   const described = await fetch(`${API}/bot${token}/getFile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -829,11 +838,10 @@ export function unreadableReply(kind: UnseenKind, captionIgnored = false): strin
     : 'I can only read text messages for now.';
 }
 
-/** Why a voice note will not be heard, or null when it will. A vault-held
-    bot cannot download yet (the vault has no file route), so it keeps the
-    stopgap answer rather than failing later in admission. */
-export function voiceRefusal(voice: TelegramVoice, credential: TelegramCredential): string | null {
-  if (isVaultTelegramCredential(credential)) return unreadableReply('voice');
+/** Why a voice note will not be heard, or null when it will. Where the bot
+    token is kept does not matter: a vault-held bot's file is fetched by the
+    vault. */
+export function voiceRefusal(voice: TelegramVoice): string | null {
   if (voice.durationS > VOICE_MAX_SECONDS || (voice.size ?? 0) > VOICE_MAX_BYTES) {
     return VOICE_REPLIES.tooLong;
   }

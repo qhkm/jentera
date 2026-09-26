@@ -11,13 +11,11 @@ import {
   downloadTelegramFile,
   sendMessage,
   TelegramFileTooLarge,
-  unreadableReply,
   VOICE_MAX_BYTES,
   VOICE_REPLIES,
   withTypingIndicator,
 } from '../connectors/telegram';
 import { claimTelegramVoiceReply } from '../request-guard';
-import { isVaultTelegramCredential } from '../vault/telegram';
 import { transcribeVoice } from '../voice/transcribe';
 import type { TelegramIntakeQueueMessage } from './consumer';
 import { runtimeTaskByDedupeKey } from './tasks';
@@ -51,13 +49,6 @@ export async function hearTelegramVoice(
       await sendMessage(token, incoming.chatId, text).catch(() => {});
     }
   };
-  /* The webhook refuses vault-held bots; this is for an intake queued before
-     a bot moved into the vault. */
-  if (isVaultTelegramCredential(token)) {
-    await say(unreadableReply('voice'));
-    return { kind: 'answered' };
-  }
-
   let heard: Awaited<ReturnType<typeof transcribeVoice>>;
   try {
     /* A three-minute note takes about 30 s to hear; "typing…" says so. */

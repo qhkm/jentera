@@ -370,21 +370,17 @@ describe('reading an update', () => {
 describe('deciding whether a voice note can be heard', () => {
   const voice = { fileId: 'AwAC', fileUniqueId: 'AgAD', durationS: 30, size: 60_000 };
   it('hears a bot the worker holds the token for', () => {
-    expect(voiceRefusal(voice, '123:AAtoken')).toBeNull();
+    expect(voiceRefusal(voice)).toBeNull();
   });
   it('says a note over ten minutes or twenty megabytes is too long', () => {
-    expect(voiceRefusal({ ...voice, durationS: 601 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
-    expect(voiceRefusal({ ...voice, size: 21 * 1024 * 1024 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
+    expect(voiceRefusal({ ...voice, durationS: 601 })).toBe(VOICE_REPLIES.tooLong);
+    expect(voiceRefusal({ ...voice, size: 21 * 1024 * 1024 })).toBe(VOICE_REPLIES.tooLong);
   });
   /* Review 26 Sep: hearing holds bytes, a binary string and base64 at once, so
      20 MB came near the isolate's 128 MB. A real ten-minute note is ~2.5 MB. */
   it('refuses a voice file over five megabytes, and hears one under it', () => {
-    expect(voiceRefusal({ ...voice, size: 6 * 1024 * 1024 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
-    expect(voiceRefusal({ ...voice, size: 4 * 1024 * 1024 }, '123:AAtoken')).toBeNull();
-  });
-  it('keeps the old answer for a bot whose token is in the vault', () => {
-    const vault = { kind: 'vault' as const, env, businessId: A, secretId: 's' };
-    expect(voiceRefusal(voice, vault)).toBe(unreadableReply('voice'));
+    expect(voiceRefusal({ ...voice, size: 6 * 1024 * 1024 })).toBe(VOICE_REPLIES.tooLong);
+    expect(voiceRefusal({ ...voice, size: 4 * 1024 * 1024 })).toBeNull();
   });
   it('echoes a transcript within Telegram’s message limit', () => {
     expect(voiceEcho('Tolong ingatkan saya.')).toBe('🎤 “Tolong ingatkan saya.”');
