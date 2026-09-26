@@ -4,7 +4,7 @@ import { runTrace, startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { RunnerClient, RuntimeBusyError } from '../src/runtime/runner-client';
 import { FAILURE_NOTICES, TELEGRAM_QUICK_TIMEOUT_NOTICE } from '../src/runtime/failure-notice';
-import { enqueueRuntimeTask } from '../src/runtime/tasks';
+import { enqueueRuntimeTask, findRuntimeApproval } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import type { RuntimeProvider } from '../src/runtime/provider';
@@ -1783,6 +1783,72 @@ describe('specialists handing off', () => {
     expect(statuses).toContainEqual(expect.objectContaining({
       detail: '⟦Finance and records⟧ ⚙️ business_records: "invoices"', kind: 'tool' }));
     expect(JSON.stringify(trace)).not.toMatch(/brief/);
+  });
+
+  it('keeps the specialist name on the approval it pauses for', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async () => Response.json({ ok: true }),
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `live:${run.id}`,
+      payload: {
+        input: 'Are we open on Sunday?', model: 'MiniMax-M3', responseMode: 'deep',
+        objective: 'Are we open on Sunday?', function: 'ask', channel: 'app',
+      },
+    }));
+    const events = [
+      { type: 'handoff', stage: 'started', specialist: 'records', name: 'Finance and records', depth: 1, seq: 1 },
+      { type: 'approval', requestId: 'b'.repeat(32), tool: 'business_records', message: 'Create a draft invoice', agent: 'records', seq: 2 },
+    ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'live-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const signal = init?.signal;
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(events));
+            signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+          },
+        }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: runnerFetch, observationSliceMs: 600 },
+    );
+    const [row] = await asTenant(A, (tx) => tx<{ approval: { id: string; agent?: string } }[]>`
+      select result->'approval' as approval from runtime_task where id = ${task.id}`);
+    expect(row.approval.agent).toBe('Finance and records');
+    const found = await asTenant(A, (tx) => findRuntimeApproval(tx, A, row.approval.id));
+    expect(found?.approval.agent).toBe('Finance and records');
   });
 });
 

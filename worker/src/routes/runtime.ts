@@ -253,6 +253,7 @@ export async function handleRuntime(
           status: found.approval.status,
           expiresAt: found.approval.expiresAt,
           surface: found.approval.surface,
+          ...(found.approval.agent ? { agent: found.approval.agent } : {}),
           runId: found.task.runId ?? null,
           /* Deliberately not the requestId: it is what the runner binds a
              decision to, and no surface needs to see it. */

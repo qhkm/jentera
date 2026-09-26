@@ -1835,6 +1835,9 @@ export async function handleRuntimeMessage(
              actually asked. */
           if (!telegram?.privateChat) {
             let pushesQueued = 0;
+            const approvalAgent = outcome.approval.agent
+              ? await specialistName(env, message.businessId, agentNames, outcome.approval.agent)
+              : undefined;
             const parked = await withTenant(env, message.businessId, async (tx) => {
               const paused = await pauseRuntimeTaskForApproval(
                 tx,
@@ -1848,6 +1851,7 @@ export async function handleRuntimeMessage(
                   remoteRunId: outcome.remoteRunId,
                   delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
                   streamSeq,
+                  ...(approvalAgent ? { agent: approvalAgent } : {}),
                 },
               );
               if (paused && lease.task.runId) {
@@ -1919,6 +1923,9 @@ export async function handleRuntimeMessage(
             );
           }
           let pushesQueued = 0;
+          const approvalAgent = outcome.approval.agent
+            ? await specialistName(env, message.businessId, agentNames, outcome.approval.agent)
+            : undefined;
           const approval = await withTenant(env, message.businessId, async (tx) => {
             const paused = await pauseRuntimeTaskForApproval(
               tx,
@@ -1937,6 +1944,7 @@ export async function handleRuntimeMessage(
                 remoteRunId: outcome.remoteRunId,
                 delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
                 streamSeq,
+                ...(approvalAgent ? { agent: approvalAgent } : {}),
               },
             );
             if (paused && lease.task.runId) {
@@ -1964,7 +1972,7 @@ export async function handleRuntimeMessage(
             token,
             telegram.chatId,
             approvalMessageId,
-            approvalPrompt(approval.tool, approval.message),
+            approvalPrompt(approval.tool, approval.message, approval.agent),
             approvalKeyboard(approval.id),
           ).catch((error) => {
             console.warn('[runtime] Telegram approval controls were not rendered', {
@@ -2852,9 +2860,10 @@ async function telegramLiveStream(
   });
 }
 
-function approvalPrompt(tool: string, message: string): string {
+function approvalPrompt(tool: string, message: string, agent?: string): string {
   return [
     '⚠️ Approval needed',
+    ...(agent ? [`${agent} is asking.`] : []),
     '',
     `Allow ${tool}?`,
     message.trim().slice(0, 1_000),

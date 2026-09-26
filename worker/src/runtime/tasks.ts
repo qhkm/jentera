@@ -100,6 +100,8 @@ export interface RuntimeApproval {
   /** app_user.id of whoever decided, for the web surface. Telegram's answer
       is attributable through the paired chat instead. */
   decidedBy?: string;
+  /** The specialist asking, when a specialist's turn raised it. */
+  agent?: string;
 }
 
 export interface FloodDeferResult {
@@ -626,6 +628,8 @@ export async function pauseRuntimeTaskForApproval(
     delaySeconds: number;
     /** Last runner event seq relayed before the approval paused the run. */
     streamSeq?: number;
+    /** The specialist asking, when a specialist's turn raised it. */
+    agent?: string;
   },
 ): Promise<RuntimeApproval | null> {
   const [row] = await tx<{ result: unknown }[]>`
@@ -643,6 +647,7 @@ export async function pauseRuntimeTaskForApproval(
     expiresAt: new Date(Date.now() + input.delaySeconds * 1_000).toISOString(),
     surface: input.telegram ? 'telegram' : 'web',
     ...(input.telegram ? { telegram: input.telegram } : {}),
+    ...(input.agent ? { agent: input.agent.slice(0, 60) } : {}),
   };
   const current = resultObject(row.result);
   const rows = await tx`
@@ -1191,6 +1196,9 @@ function runtimeApprovalFromResult(value: unknown): RuntimeApproval | null {
       ? { decidedBy: approval.decidedBy }
       : {}),
     surface,
+    ...(typeof approval.agent === 'string' && approval.agent.trim() && approval.agent.length <= 60
+      ? { agent: approval.agent }
+      : {}),
     ...(hasTelegram
       ? {
           telegram: {
