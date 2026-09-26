@@ -7,7 +7,7 @@ import { useRepository } from '@/lib/repo';
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
-/** The composer's mic. The words land in the message box for the owner to
+/** The composer's mic, beside Send. The words land in the message box for the owner to
     check and send; nothing is sent from here. Not offered in the demo, in the
     native shell (which has no microphone permission yet), or where the
     browser cannot record. */
@@ -31,9 +31,10 @@ export function VoiceRecordButton({ onText, disabled = false }: {
   const label = t(recording ? 'ask.voice.stop' : transcribing ? 'ask.voice.transcribing' : 'ask.voice.start');
   return (
     <>
+      {recording && <span className="ask-voice-time" aria-hidden="true">{clock(recorder.seconds)}</span>}
       <button
         type="button"
-        className={`ask-attach-button ask-voice-button${recording ? ' is-recording' : ''}`}
+        className={`ask-voice-button${recording ? ' is-recording' : ''}`}
         aria-label={label}
         title={label}
         aria-pressed={recording}
@@ -41,11 +42,10 @@ export function VoiceRecordButton({ onText, disabled = false }: {
         onClick={() => { if (recording) recorder.stop(); else void recorder.start(); }}
       >
         {recording
-          ? <Stop size={15} weight="fill" aria-hidden="true" />
+          ? <Stop size={18} weight="fill" aria-hidden="true" />
           : transcribing
-            ? <CircleNotch className="ask-voice-spinner" size={15} aria-hidden="true" />
-            : <Microphone size={15} aria-hidden="true" />}
-        <span>{recording ? clock(recorder.seconds) : t(transcribing ? 'ask.voice.transcribingShort' : 'ask.toolbar.voice')}</span>
+            ? <CircleNotch className="ask-voice-spinner" size={18} aria-hidden="true" />
+            : <Microphone size={19} aria-hidden="true" />}
       </button>
       <span className="sr-only" role="status">
         {recording ? t('ask.voice.recording') : transcribing ? t('ask.voice.transcribing') : ''}

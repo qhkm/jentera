@@ -308,8 +308,32 @@
   font-size: 10px;
   white-space: nowrap;
 }
+/* Beside Send and the same size, outlined so Send stays the main action. */
+.ask-voice-button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--rail);
+  border-radius: 11px;
+  color: var(--text);
+  background: transparent;
+}
+.ask-voice-button:hover:not(:disabled) {
+  background: rgb(var(--border-ink) / 0.045);
+}
+.ask-voice-button:disabled {
+  color: var(--text-muted);
+}
+.ask-voice-time {
+  color: var(--color-red-400);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .ask-voice-button.is-recording {
   color: var(--color-red-400);
+  border-color: currentColor;
 }
 
 .ask-voice-button.is-recording > svg {
@@ -1523,7 +1547,8 @@ button.ask-context-link:hover {
     line-height: 16px;
     text-align: center;
   }
-  .ask-studio-send {
+  .ask-studio-send,
+  .ask-voice-button {
     width: 44px;
     height: 44px;
   }

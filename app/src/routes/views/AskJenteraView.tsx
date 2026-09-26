@@ -666,13 +666,6 @@ export default function AskJenteraView({
                   <Paperclip size={15} aria-hidden="true" />
                   <span>{t(attachment ? 'ask.toolbar.replace' : 'ask.toolbar.attach')}</span>
                 </button>
-                {signedIn && <VoiceRecordButton
-                  disabled={busy}
-                  onText={(text) => {
-                    setDraft(draft.trim() ? `${draft.trimEnd()} ${text}` : text);
-                    composer.current?.focus();
-                  }}
-                />}
                 {signedIn && <>
                   <button
                     ref={skillButton}
@@ -724,6 +717,13 @@ export default function AskJenteraView({
                 )}
               </div>
               <div className="ask-writing-actions">
+                {signedIn && <VoiceRecordButton
+                  disabled={busy}
+                  onText={(text) => {
+                    setDraft(draft.trim() ? `${draft.trimEnd()} ${text}` : text);
+                    composer.current?.focus();
+                  }}
+                />}
                 <button
                   type="submit"
                   className="ask-studio-send"

@@ -53,6 +53,7 @@ describe('recording a voice message in the composer', () => {
     const user = userEvent.setup();
     const { repo, onText } = mount(async () => 'Tolong semak stok minyak.');
     await user.click(await screen.findByRole('button', { name: 'Record a voice message' }));
+    expect(screen.getByText('0:00')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Stop recording' }));
     await waitFor(() => expect(onText).toHaveBeenCalledWith('Tolong semak stok minyak.'));
     const [audio] = repo.transcribe!.mock.calls[0] as [Blob];

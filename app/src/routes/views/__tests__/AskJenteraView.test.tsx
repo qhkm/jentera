@@ -601,6 +601,12 @@ describe('a voice message in the composer', () => {
       await user.click(await screen.findByRole('button', { name: 'Stop recording' }));
       await waitFor(() => expect(input).toHaveValue('Boss, semak stok minyak esok'));
       expect(ask).not.toHaveBeenCalled();
+      /* Beside Send, like ChatGPT: the two ways of saying something sit together. */
+      const mic = screen.getByRole('button', { name: 'Record a voice message' });
+      const send = screen.getByRole('button', { name: 'Send message' });
+      expect(mic.parentElement).toBe(send.parentElement);
+      expect(mic.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(mic).not.toHaveTextContent(/\S/);
     } finally {
       vi.unstubAllGlobals();
     }
