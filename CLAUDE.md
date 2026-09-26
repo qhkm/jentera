@@ -174,9 +174,14 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   workspaces this person is in with their chats; team plan only): they
   were read once when the chat screen mounted, so a colleague's new chat
   waited for a page reload, and a failed read emptied the list. Now a
-  return to the app reads them again and a failed read keeps them. The
-  Team settings workspace panel still reads `/api/workspaces` for itself,
-  with its own create and add-member edits.
+  return to the app reads them again and a failed read keeps them. They
+  are built on `['biz', id, 'workspaces']` (`workspacesQuery`, every
+  workspace as `/api/workspaces` answers), which the Team settings panel
+  reads too, so the two make one read; the panel's create writes the
+  server's answer into it, and create, add and remove member all read the
+  chat screen's shared chats again at once. `workspacesQuery` states its
+  own `staleTime`: `fetchQuery` does not take the client default, and
+  without it every shared-chats read would ask again.
 
 ## Native shell (`mobile/`)
 

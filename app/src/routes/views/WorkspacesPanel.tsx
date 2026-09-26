@@ -4,35 +4,49 @@
    member sees the ones they are in. Team is a plan, so this mounts only
    where the server has said it applies.
    ============================================================ */
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useContext, useState, type FormEvent } from 'react';
+import { QueryClient, QueryClientContext, useQuery } from '@tanstack/react-query';
 import { Button, Card, Input, LoadingState, Tag } from '@/components/ui';
 import { useToast } from '@/components/Toast';
 import { useT } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
 import type { TeamMember, Workspaces } from '@/lib/repo';
+import { workspacesQuery } from '@/hooks/useSharedChats';
+import { keys } from '@/lib/query/keys';
+import { useBusinessId } from '@/lib/query/scope';
+
+/* The Team tab mounts only on a signed-in team business, which always has a
+   cache; tests and the dev preview without one get this, inert. */
+const INERT = new QueryClient();
 
 export default function WorkspacesPanel({ members }: { members: TeamMember[] }) {
   const t = useT();
   const toast = useToast();
   const repo = useRepository();
-  const [data, setData] = useState<Workspaces | null>(null);
-  const [error, setError] = useState(false);
+  const scoped = useContext(QueryClientContext);
+  const businessId = useBusinessId();
+  const client = scoped ?? INERT;
+  const live = scoped !== undefined && businessId !== null && !!repo.workspaces;
+  /* One read with the chat screen's shared chats; a failed refresh keeps
+     the list, and only a first read that fails shows the error. */
+  const read = useQuery({ ...workspacesQuery(repo, businessId ?? 'none'), enabled: live }, client);
+  const data = read.data ?? null;
+  const error = read.isError && data === null && !read.isFetching;
   const [name, setName] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
-    if (!repo.workspaces) return;
-    setError(false);
-    try {
-      setData(await repo.workspaces());
-    } catch {
-      setError(true);
-    }
-  }, [repo]);
-
-  useEffect(() => { void load(); }, [load]);
+  const load = async () => { if (live) await read.refetch(); };
+  /* A membership change is also a change to the chat screen's shared chats:
+     read both again, so a workspace joined here shows there at once. */
+  async function changed() {
+    if (!live) return;
+    await Promise.all([
+      client.invalidateQueries({ queryKey: keys.workspaces(businessId!) }),
+      client.invalidateQueries({ queryKey: keys.sharedChats(businessId!) }),
+    ]);
+  }
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -40,7 +54,13 @@ export default function WorkspacesPanel({ members }: { members: TeamMember[] }) 
     setBusy(true);
     try {
       const workspace = await repo.createWorkspace(name.trim(), picked);
-      setData((prev) => prev ? { ...prev, workspaces: [...prev.workspaces, workspace] } : prev);
+      if (live) {
+        /* The server's answer goes in as it is; a read already in flight
+           began before it and would land after, so it is stopped first. */
+        await client.cancelQueries({ queryKey: keys.workspaces(businessId!) });
+        client.setQueryData<Workspaces>(keys.workspaces(businessId!), (prev) => prev ? { ...prev, workspaces: [...prev.workspaces, workspace] } : prev);
+        void client.invalidateQueries({ queryKey: keys.sharedChats(businessId!) });
+      }
       setName('');
       setPicked([]);
       toast(t('ws.created', { name: workspace.name }));
@@ -57,7 +77,7 @@ export default function WorkspacesPanel({ members }: { members: TeamMember[] }) 
     try {
       await repo.addWorkspaceMember(workspaceId, userId);
       setAdding((prev) => ({ ...prev, [workspaceId]: '' }));
-      await load();
+      await changed();
     } catch (e) {
       toast(e instanceof Error ? e.message : t('ws.error'), 'error');
     }
@@ -68,7 +88,7 @@ export default function WorkspacesPanel({ members }: { members: TeamMember[] }) 
     try {
       await repo.removeWorkspaceMember(workspaceId, userId);
       toast(t('ws.removed', { name: workspaceName }));
-      await load();
+      await changed();
     } catch (e) {
       toast(e instanceof Error ? e.message : t('ws.error'), 'error');
     }
