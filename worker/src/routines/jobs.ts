@@ -51,6 +51,10 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** A report run records itself as work (execute.ts), so each summary
+    listed the one before it. Scheduled agent work is still work. */
+const REPORT_TASKS = ['business_summary', 'weekly_summary', 'approval_reminder'] as const;
+
 /** Work recorded in [end − window, end), counted in full and listed in part.
     Conversation is left out: a chat reply is a row too (migration 024), and
     until 26 September "hey jentera" was counted as completed work. */
@@ -73,12 +77,14 @@ export async function summaryReport(
            coalesce(sum(minutes_saved), 0)::text as minutes
       from work_record
      where kind = 'work'
+       and coalesce(inputs_used->>'task', '') not in ${tx(REPORT_TASKS)}
        and occurred_at >= ${start.toISOString()}::timestamptz
        and occurred_at < ${end.toISOString()}::timestamptz`;
   const rows = await tx<{ objective: string; outcome: string | null; status: string }[]>`
     select objective, outcome, status
       from work_record
      where kind = 'work'
+       and coalesce(inputs_used->>'task', '') not in ${tx(REPORT_TASKS)}
        and occurred_at >= ${start.toISOString()}::timestamptz
        and occurred_at < ${end.toISOString()}::timestamptz
      order by occurred_at desc

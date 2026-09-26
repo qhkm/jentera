@@ -443,9 +443,30 @@ describe('run now', () => {
 
     await asOwner((sql) => sql`update business set lang = 'bm' where id = ${A}`);
     const bm = await summary();
-    // the first run is itself completed work in the window
-    expect(bm).toContain('4 kerja direkodkan: 2 selesai, 0 gagal, 1 dibatalkan, 1 lain.');
+    expect(bm).toContain('3 kerja direkodkan: 1 selesai, 0 gagal, 1 dibatalkan, 1 lain.');
     expect(bm).toContain('Dibatalkan: Breakfast reminder');
+  });
+
+  it('does not count an earlier report as work, but counts scheduled agent work', async () => {
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    await seedWork(1, hourAgo);
+    await asOwner((sql) => sql`
+      insert into work_record (business_id, objective, status, function, occurred_at, inputs_used)
+      values (${A}, 'Yesterday''s report', 'completed', 'routine', ${hourAgo}::timestamptz, ${sql.json({ task: 'weekly_summary' })}),
+             (${A}, 'Chase unpaid invoices', 'failed', 'routine', ${hourAgo}::timestamptz, ${sql.json({ task: 'agent_task' })})`);
+    const routine = await create();
+    const run = async (): Promise<string> => {
+      const res = await call('POST', `/api/routines/${routine.id}/run`, cookieOwnerA,
+        { requestId: uuid(), expectedRevision: 1 });
+      expect(res.status).toBe(202);
+      return res.body.occurrence.summary as string;
+    };
+    await run();
+    const second = await run();
+    expect(second).toContain('2 pieces of work recorded: 1 completed, 1 failed.');
+    expect(second).toContain('Failed: Chase unpaid invoices');
+    expect(second).not.toContain(routine.name as string);
+    expect(second).not.toContain('Yesterday');
   });
 
   it('records a reminder with nothing pending as skipped, and counts pending approvals otherwise', async () => {
