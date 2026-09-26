@@ -283,14 +283,15 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const error = (key: string) => (errors[key] ? <p className="field-error" role="alert">{t(errors[key])}</p> : null);
   const noticeLabel = (minutes: number) => (NOTICE.includes(minutes)
     ? t(`bookings.settings.notice.${minutes}`) : t('bookings.settings.notice.custom', { n: minutes }));
-  const panels: Array<{ id: SettingsPanel; label: string; meta?: string }> = [
-    { id: 'services', label: t('bookings.settings.services'), meta: String(services.length) },
-    { id: 'hours', label: t('bookings.settings.hours') },
-    { id: 'page', label: t('bookings.settings.pageDetails') },
-    { id: 'rules', label: t('bookings.settings.rules') },
-    { id: 'calendar', label: t('bookings.settings.calendarProtection'), meta: config.calendarProtection.lastError ? '!' : undefined },
-    { id: 'blocks', label: t('bookings.settings.blocks'), meta: blocks.length ? String(blocks.length) : undefined },
+  const panels: Array<{ id: SettingsPanel; label: string; navLabel: string; meta?: string }> = [
+    { id: 'services', label: t('bookings.settings.services'), navLabel: t('bookings.settings.nav.services'), meta: String(services.length) },
+    { id: 'hours', label: t('bookings.settings.hours'), navLabel: t('bookings.settings.nav.hours') },
+    { id: 'page', label: t('bookings.settings.pageDetails'), navLabel: t('bookings.settings.nav.page') },
+    { id: 'rules', label: t('bookings.settings.rules'), navLabel: t('bookings.settings.nav.rules') },
+    { id: 'calendar', label: t('bookings.settings.calendarProtection'), navLabel: t('bookings.settings.nav.calendar'), meta: config.calendarProtection.lastError ? '!' : undefined },
+    { id: 'blocks', label: t('bookings.settings.blocks'), navLabel: t('bookings.settings.nav.blocks'), meta: blocks.length ? String(blocks.length) : undefined },
   ];
+  const previewServices = services.filter((service) => service.active).slice(0, 3);
 
   return <form className="bookings-settings" onSubmit={(event) => void save(event)} noValidate>
     {!installed && <>
@@ -300,8 +301,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     <div className="bookings-settings-shell">
       <nav className="bookings-settings-nav" aria-label={t('bookings.settings.nav')}>
         {panels.map((item) => <button key={item.id} type="button" className={panel === item.id ? 'active' : ''}
-          aria-label={item.label} aria-current={panel === item.id ? 'page' : undefined} onClick={() => setPanel(item.id)}>
-          <span>{item.label}</span>{item.meta && <small>{item.meta}</small>}
+          aria-label={item.navLabel} aria-current={panel === item.id ? 'page' : undefined} onClick={() => setPanel(item.id)}>
+          <span>{item.navLabel}</span>{item.meta && <small>{item.meta}</small>}
         </button>)}
       </nav>
       <section className="bookings-settings-panel">
@@ -377,7 +378,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         </div>
       </fieldset>)}
     </div>}
-    {panel === 'page' && <div className="bookings-settings-fields">
+    {panel === 'page' && <div className="bookings-page-editor">
+    <div className="bookings-page-controls">
     <section className="bookings-branding" aria-labelledby="bookings-branding-title">
       <div>
         <h4 id="bookings-branding-title">{t('bookings.settings.branding')}</h4>
@@ -427,6 +429,36 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     <p className="bookings-link-preview">{!installed ? t('bookings.settings.link.future', { path: `/b/${slug}` })
       : origin ? `${origin}/b/${slug}` : `…/b/${slug}`}</p>
     {error('slug')}
+    </div>
+    <aside className="bookings-live-preview" aria-label={t('bookings.settings.preview.title')}
+      style={{ '--booking-preview-accent': BRAND_COLOR.test(brandColor) ? brandColor : '#4aebb5' } as CSSProperties}>
+      <header>
+        <div><strong>{t('bookings.settings.preview.title')}</strong><span>{t('bookings.settings.preview.help')}</span></div>
+        <small>{t('bookings.settings.preview.live')}</small>
+      </header>
+      <div className="bookings-preview-frame">
+        <div className="bookings-preview-business">
+          <div className="bookings-preview-logo">
+            {config.settings?.logoUrl
+              ? <img src={config.settings.logoUrl} alt="" />
+              : <span aria-hidden="true">{Array.from(business.name.trim())[0]?.toUpperCase()}</span>}
+          </div>
+          <div><strong>{business.name}</strong><span>{location.trim() || t('bookings.settings.preview.locationFallback')}</span></div>
+        </div>
+        <div className="bookings-preview-progress" aria-hidden="true"><i /><i /><i /><i /></div>
+        <div className="bookings-preview-content">
+          <h5>{t('bookings.settings.preview.choose')}</h5>
+          <p>{t('bookings.settings.preview.chooseHelp')}</p>
+          <div className="bookings-preview-services">
+            {previewServices.length ? previewServices.map((service) => <div key={service.key}>
+              <span><strong>{service.name.trim() || t('bookings.settings.service')}</strong>
+                <small>{t('bookings.settings.minutes', { n: service.durationMinutes })}{service.priceLabel.trim() ? ` · ${service.priceLabel.trim()}` : ''}</small></span>
+              <b aria-hidden="true">→</b>
+            </div>) : <div className="bookings-preview-empty">{t('bookings.settings.preview.empty')}</div>}
+          </div>
+        </div>
+      </div>
+    </aside>
     </div>}
     {panel === 'rules' && <div className="bookings-settings-fields">
       <label>{t('bookings.settings.notice')}

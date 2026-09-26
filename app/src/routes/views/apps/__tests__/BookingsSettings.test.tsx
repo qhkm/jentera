@@ -62,6 +62,7 @@ describe('BookingsSettings', () => {
     const location = screen.getByLabelText('Where the booking takes place');
     await user.clear(location);
     await user.type(location, 'Online · Link shared after confirmation');
+    expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Online · Link shared after confirmation');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({
       location: 'Online · Link shared after confirmation', brandColor: '#4aebb5',
@@ -74,7 +75,9 @@ describe('BookingsSettings', () => {
     const { onSaved, user } = await mount(configFixture(), api);
     await user.click(screen.getByRole('button', { name: 'Booking page' }));
     expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Customer preview')).toHaveTextContent('Cupping class');
     await user.click(screen.getByRole('button', { name: '#62a8ff' }));
+    expect(screen.getByLabelText('Customer preview')).toHaveStyle({ '--booking-preview-accent': '#62a8ff' });
     const logo = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'logo.png', { type: 'image/png' });
     await user.upload(screen.getByLabelText('Add logo'), logo);
     expect(api.uploadBookingsLogo).toHaveBeenCalledWith(logo);
@@ -85,7 +88,7 @@ describe('BookingsSettings', () => {
 
   it('saves the customer change deadline and explains reminder delivery accurately', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByRole('button', { name: 'Booking rules and reminders' }));
+    await user.click(screen.getByRole('button', { name: 'Rules & reminders' }));
     await user.selectOptions(screen.getByLabelText('Customer change deadline'), '720');
     expect(screen.getByText(/does not send it automatically yet/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
@@ -94,9 +97,9 @@ describe('BookingsSettings', () => {
 
   it('shows Calendar protection and saves a manual closure in Malaysia time', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByRole('button', { name: 'Calendar conflict protection' }));
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
     expect(screen.getByText(/Active for owner@example.com/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Blocked time and closures' }));
+    await user.click(screen.getByRole('button', { name: 'Closures' }));
     await user.click(screen.getByRole('button', { name: 'Add blocked time' }));
     await user.type(screen.getByLabelText('Reason'), 'Team retreat');
     fireEvent.change(screen.getByLabelText('Starts'), { target: { value: '2026-10-12T09:00' } });
@@ -122,7 +125,7 @@ describe('BookingsSettings', () => {
 
   it('points at a closing time before the opening time', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByRole('button', { name: 'Weekly hours' }));
+    await user.click(screen.getByRole('button', { name: 'Hours' }));
     fireEvent.change(screen.getByLabelText('Tuesday closes'), { target: { value: '09:00' } });
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(screen.getByText('Closing time must be after opening time.')).toBeInTheDocument();
