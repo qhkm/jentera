@@ -64,11 +64,12 @@ export async function summaryReport(
   const hours = windowHours(kind);
   const start = new Date(end.getTime() - hours * 3_600_000);
   const [totals] = await tx<{
-    total: string; completed: string; failed: string; minutes: string;
+    total: string; completed: string; failed: string; cancelled: string; minutes: string;
   }[]>`
     select count(*)::text as total,
            count(*) filter (where status = 'completed')::text as completed,
            count(*) filter (where status = 'failed')::text as failed,
+           count(*) filter (where status = 'cancelled')::text as cancelled,
            coalesce(sum(minutes_saved), 0)::text as minutes
       from work_record
      where kind = 'work'
@@ -85,15 +86,18 @@ export async function summaryReport(
   const total = Number(totals.total);
   const completed = Number(totals.completed);
   const failed = Number(totals.failed);
-  const other = total - completed - failed;
+  const cancelled = Number(totals.cancelled);
+  const other = total - completed - failed - cancelled;
   const minutes = Number(totals.minutes);
   const endLabel = formatInZone(end, timeZone, lang);
   /* A summary is an index of work, not a dump of agent transcripts. Outcomes
      can contain progress markers, file paths and hundreds of words; the task
      remains reachable from Activity when the owner needs that detail. */
-  const lines = rows.map((row) => lang === 'bm'
-    ? `- ${row.status === 'completed' ? 'Selesai' : row.status === 'failed' ? 'Gagal' : 'Lain'}: ${row.objective}`
-    : `- ${row.status === 'completed' ? 'Completed' : row.status === 'failed' ? 'Failed' : 'Other'}: ${row.objective}`);
+  const labels = lang === 'bm'
+    ? { completed: 'Selesai', failed: 'Gagal', cancelled: 'Dibatalkan', other: 'Lain' }
+    : { completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', other: 'Other' };
+  const lines = rows.map((row) =>
+    `- ${labels[row.status as keyof typeof labels] ?? labels.other}: ${row.objective}`);
   const more = total - rows.length;
 
   let text: string;
@@ -104,6 +108,7 @@ export async function summaryReport(
     const counts = total === 0
       ? 'Tiada kerja direkodkan dalam tempoh ini.'
       : `${total} kerja direkodkan: ${completed} selesai, ${failed} gagal` +
+        `${cancelled > 0 ? `, ${cancelled} dibatalkan` : ''}` +
         `${other > 0 ? `, ${other} lain` : ''}. ${minutes} minit dijimatkan.`;
     text = [title, '', counts, ...(lines.length ? ['', ...lines] : []),
       ...(more > 0 ? ['', `…dan ${more} lagi.`] : [])].join('\n');
@@ -114,13 +119,14 @@ export async function summaryReport(
     const counts = total === 0
       ? 'No work was recorded in this window.'
       : `${plural(total, 'piece of work', 'pieces of work')} recorded: ${completed} completed, ` +
-        `${failed} failed${other > 0 ? `, ${other} other` : ''}. ${plural(minutes, 'minute', 'minutes')} saved.`;
+        `${failed} failed${cancelled > 0 ? `, ${cancelled} cancelled` : ''}` +
+        `${other > 0 ? `, ${other} other` : ''}. ${plural(minutes, 'minute', 'minutes')} saved.`;
     text = [title, '', counts, ...(lines.length ? ['', ...lines] : []),
       ...(more > 0 ? ['', `…and ${more} more.`] : [])].join('\n');
   }
   return {
     text: text.slice(0, TEXT_CAP),
-    inputs: { window: { from: start.toISOString(), to: end.toISOString() }, total, completed, failed, minutes },
+    inputs: { window: { from: start.toISOString(), to: end.toISOString() }, total, completed, failed, cancelled, minutes },
   };
 }
 

@@ -38,6 +38,17 @@ describe('notificationSummary', () => {
     });
   });
 
+  it('reads summaries that count cancelled and other work, in both languages', () => {
+    expect(notificationSummary(notification(
+      'Daily summary',
+      '3 pieces of work recorded: 1 completed, 0 failed, 1 cancelled, 1 other. 3 minutes saved.',
+    ))).toEqual({ period: 'daily', total: 3, completed: 1, failed: 0, minutes: 3 });
+    expect(notificationSummary(notification(
+      'Ringkasan harian',
+      '2 kerja direkodkan: 1 selesai, 0 gagal, 1 dibatalkan. 0 minit dijimatkan.',
+    ))).toEqual({ period: 'daily', total: 2, completed: 1, failed: 0, minutes: 0 });
+  });
+
   it('leaves ordinary completed notifications unchanged', () => {
     expect(notificationSummary(notification('Stock check — completed', 'Everything is ready.'))).toBeNull();
   });

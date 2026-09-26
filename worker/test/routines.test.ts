@@ -419,6 +419,35 @@ describe('run now', () => {
     expect(detail.text).not.toContain('Chat 1');
   });
 
+  it('names cancelled work as cancelled in a business summary, in both languages', async () => {
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    await seedWork(1, hourAgo);
+    await asOwner((sql) => sql`
+      insert into work_record (business_id, objective, status, occurred_at)
+      values (${A}, 'Breakfast reminder', 'cancelled', ${hourAgo}::timestamptz),
+             (${A}, 'Quote for Ali', 'needs_input', ${hourAgo}::timestamptz)`);
+    const routine = await create();
+
+    const summary = async (): Promise<string> => {
+      const res = await call('POST', `/api/routines/${routine.id}/run`, cookieOwnerA,
+        { requestId: uuid(), expectedRevision: 1 });
+      expect(res.status).toBe(202);
+      const { request, url } = req('GET', `/api/runs/${res.body.occurrence.runId}`, { cookie: cookieOwnerA });
+      return ((await (await handleRuns(request, env, url, cors))!.json()) as Body).text as string;
+    };
+
+    const en = await summary();
+    expect(en).toContain('3 pieces of work recorded: 1 completed, 0 failed, 1 cancelled, 1 other.');
+    expect(en).toContain('Cancelled: Breakfast reminder');
+    expect(en).toContain('Other: Quote for Ali');
+
+    await asOwner((sql) => sql`update business set lang = 'bm' where id = ${A}`);
+    const bm = await summary();
+    // the first run is itself completed work in the window
+    expect(bm).toContain('4 kerja direkodkan: 2 selesai, 0 gagal, 1 dibatalkan, 1 lain.');
+    expect(bm).toContain('Dibatalkan: Breakfast reminder');
+  });
+
   it('records a reminder with nothing pending as skipped, and counts pending approvals otherwise', async () => {
     const routine = await create({ task: { kind: 'approval_reminder' } });
     const none = await call('POST', `/api/routines/${routine.id}/run`, cookieOwnerA,

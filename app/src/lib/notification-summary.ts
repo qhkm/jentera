@@ -16,7 +16,7 @@ export function routineSummary(text: string): NotificationSummary | null {
       : null;
   if (!period) return null;
   const counts = text.match(
-    /(\d+)\s+(?:pieces? of work recorded|work recorded|kerja direkodkan)\s*:\s*(\d+)\s+(?:completed|selesai)\s*,\s*(\d+)\s+(?:failed|gagal)(?:\s*,\s*\d+\s+(?:other|lain))?\.?\s*(\d+)\s+(?:minutes?|minit)\s+(?:saved|dijimatkan)/i,
+    /(\d+)\s+(?:pieces? of work recorded|work recorded|kerja direkodkan)\s*:\s*(\d+)\s+(?:completed|selesai)\s*,\s*(\d+)\s+(?:failed|gagal)(?:\s*,\s*\d+\s+(?:cancelled|dibatalkan))?(?:\s*,\s*\d+\s+(?:other|lain))?\.?\s*(\d+)\s+(?:minutes?|minit)\s+(?:saved|dijimatkan)/i,
   );
   if (!counts) return null;
   return {
