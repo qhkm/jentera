@@ -259,14 +259,18 @@ export class HandoffEngine {
       return { ok: false, code, message: HANDOFF_MESSAGES[code] };
     };
     mark('requested');
+    /* Every request that reaches the runner counts toward the task's five,
+       refused or not (the spec's Limits): a model looping on refusals is
+       otherwise bounded only by its own turn limit. */
+    const used = task.used;
+    task.used += 1;
     if (task.stopped) return refuse('stopped');
-    const refusal = handoffRefusal({ caller, specialist: key, roster, used: task.used, limits: task.limits });
+    const refusal = handoffRefusal({ caller, specialist: key, roster, used, limits: task.limits });
     if (refusal) return refuse(refusal);
     /* A hand-off gets only what its own caller has left, not the whole task's
        remaining time — so a grandchild can never outlive its parent. */
     const budgetMs = handoffBudgetMs(caller.deadline, this.deps.now());
     if (budgetMs < HANDOFF_MIN_MS) return refuse('time');
-    task.used += 1;
 
     /* The budget clock starts before the start POST, not after it: Hermes
        gives the whole tool call 420 s, and a slow start has to come out of

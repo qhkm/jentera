@@ -155,6 +155,17 @@ test('refuses the sixth hand-off in a task', async () => {
   assert.equal((await handoffs.request(ask('records', '#6'))).code, 'limit_count');
 });
 
+test('a refused request still counts toward the five', async () => {
+  const { handoffs, fake } = engine(() => done('ok'));
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal((await handoffs.request(ask('finance', `#${i}`))).code, 'unknown_specialist');
+  }
+  assert.equal((await handoffs.request(ask('records', '#4'))).ok, true);
+  assert.equal((await handoffs.request(ask('records', '#5'))).ok, true);
+  assert.equal((await handoffs.request(ask('records', '#6'))).code, 'limit_count');
+  assert.equal(fake.calls.filter((call) => call.path === '/v1/runs').length, 2);
+});
+
 test('gives a hand-off only the time the caller can spare', async () => {
   assert.equal(handoffBudgetMs(NOW + 900_000, NOW), HANDOFF_MAX_MS);
   assert.equal(handoffBudgetMs(NOW + 70_000, NOW), 10_000);
