@@ -61,11 +61,12 @@ describe('Home with apps', () => {
     expect(screen.queryByRole('button', { name: /Add app/ })).toBeNull();
   });
 
-  it('shows installed apps with their count, and Add app, in place of the four tiles', async () => {
+  it('adds installed apps and Add app without removing the four original tiles', async () => {
     const { onNavigate, onOpenApp, user } = await mount(fakeAppsApi({ list: installed(2) }));
     await user.click(await screen.findByRole('button', { name: /Bookings.*2 waiting/ }));
     expect(onOpenApp).toHaveBeenCalledWith('bookings');
-    expect(document.querySelector('.home-action-alerts')).toBeNull();
+    expect(document.querySelectorAll('.home-action')).toHaveLength(6);
+    expect(document.querySelector('.home-action-alerts')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: /Add app/ }));
     expect(onNavigate).toHaveBeenCalledWith('apps');
   });

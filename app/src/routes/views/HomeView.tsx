@@ -161,7 +161,30 @@ export default function HomeView({
         </span>
       </header>
 
-      {homeApps ? (
+      <section className="home-actions" aria-label={t('home.actions')}>
+        <button type="button" className="home-action home-action-chat" onClick={() => onNavigate('chat')}>
+          <span className="home-action-icon"><ChatCircle size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.chat')}</strong><small>{t('home.action.chat.detail')}</small></span>
+        </button>
+        <button type="button" className="home-action home-action-activity" onClick={() => onNavigate('work')}>
+          <span className="home-action-icon"><Lightning size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.activity')}</strong><small>{t('home.action.activity.detail')}</small></span>
+        </button>
+        <button
+          type="button"
+          className="home-action home-action-alerts"
+          onClick={() => onNavigate('notifications')}
+        >
+          <span className="home-action-icon"><Bell size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.alerts')}</strong><small>{t('home.action.alerts.detail')}</small></span>
+        </button>
+        <button type="button" className="home-action home-action-more" onClick={() => onNavigate('business')}>
+          <span className="home-action-icon"><SquaresFour size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.business')}</strong><small>{t('home.action.business.detail')}</small></span>
+        </button>
+      </section>
+
+      {homeApps && (
         <section className="home-actions home-actions-apps" aria-label={t('home.apps')}>
           {homeApps.slice(0, 3).map((app) => (
             <button key={app.key} type="button" className={`home-action home-action-${app.key}`} onClick={() => onOpenApp?.(app.key)}>
@@ -184,29 +207,6 @@ export default function HomeView({
               <span><strong>{t('home.apps.add')}</strong><small>{t('home.apps.add.detail')}</small></span>
             </button>
           )}
-        </section>
-      ) : (
-        <section className="home-actions" aria-label={t('home.actions')}>
-          <button type="button" className="home-action home-action-chat" onClick={() => onNavigate('chat')}>
-            <span className="home-action-icon"><ChatCircle size={22} weight="duotone" aria-hidden="true" /></span>
-            <span><strong>{t('home.action.chat')}</strong><small>{t('home.action.chat.detail')}</small></span>
-          </button>
-          <button type="button" className="home-action home-action-activity" onClick={() => onNavigate('work')}>
-            <span className="home-action-icon"><Lightning size={22} weight="duotone" aria-hidden="true" /></span>
-            <span><strong>{t('home.action.activity')}</strong><small>{t('home.action.activity.detail')}</small></span>
-          </button>
-          <button
-            type="button"
-            className="home-action home-action-alerts"
-            onClick={() => onNavigate('notifications')}
-          >
-            <span className="home-action-icon"><Bell size={22} weight="duotone" aria-hidden="true" /></span>
-            <span><strong>{t('home.action.alerts')}</strong><small>{t('home.action.alerts.detail')}</small></span>
-          </button>
-          <button type="button" className="home-action home-action-more" onClick={() => onNavigate('business')}>
-            <span className="home-action-icon"><SquaresFour size={22} weight="duotone" aria-hidden="true" /></span>
-            <span><strong>{t('home.action.business')}</strong><small>{t('home.action.business.detail')}</small></span>
-          </button>
         </section>
       )}
 
