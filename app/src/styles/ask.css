@@ -552,20 +552,6 @@ button.ask-context-link:hover {
 /* One specialist's line in "Who's working on this": name, outcome, reason, time. */
 .task-coordination-handoff { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
 .task-coordination-handoff span + span::before { content: '· '; }
-.ask-writing-hint.ask-ai-disclaimer {
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.45;
-  margin-top: 7px;
-}
-@media (max-width: 767px) {
-  .dashboard-shell p.ask-writing-hint.ask-ai-disclaimer {
-    font-size: 0.625rem;
-    line-height: 1.4;
-    margin-top: 5px;
-    text-wrap: pretty;
-  }
-}
 .ask-studio-starters {
   display: flex;
   justify-content: center;

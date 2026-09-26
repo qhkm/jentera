@@ -189,7 +189,7 @@
 @media (max-width: 1023px) {
   .kb-open .workspace-chat .ask-studio-start .ask-studio-stream,
   .kb-open .workspace-chat .ask-studio-extras,
-  .kb-open .workspace-chat .ask-writing-hint:not(.ask-ai-disclaimer),
+  .kb-open .workspace-chat .ask-writing-hint,
   .kb-open .workspace-chat .ask-refinements {
     display: none;
   }

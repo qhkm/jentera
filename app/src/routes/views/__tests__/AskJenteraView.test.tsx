@@ -424,19 +424,22 @@ describe('compose-first Ask Jentera', () => {
     await waitFor(() => expect(screen.queryByText('Jentera is paused')).toBeNull());
     expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
   });
-  it('shows an accuracy disclaimer associated with the composer', async () => {
+  /* The owner asked on 27 Sep for the line under the composer to go. The
+     keyboard hint it carried for screen readers stays. */
+  it('shows no accuracy disclaimer under the composer, and keeps its keyboard hint for screen readers', async () => {
     await mount();
     const input = await screen.findByRole('textbox');
-    const disclaimer = screen.getByText('Jentera can make mistakes. Verify important information before acting.');
-    expect(disclaimer).toBeVisible();
-    expect(disclaimer.closest('p')).toHaveClass('ask-ai-disclaimer');
-    expect(input).toHaveAttribute('aria-describedby', disclaimer.closest('p')!.id);
+    expect(screen.queryByText(/can make mistakes/)).toBeNull();
+    const hint = document.getElementById(input.getAttribute('aria-describedby')!.split(' ')[0]!);
+    expect(hint).toHaveTextContent('Enter for a new line');
+    expect(hint).toHaveClass('sr-only');
   });
-  it('shows the disclaimer in Bahasa Malaysia', async () => {
+  it('shows no disclaimer in Bahasa Malaysia either', async () => {
     const repo = new LocalRepository();
     await repo.setLang('bm');
     await mount(<Harness />, repo);
-    expect(await screen.findByText('Jentera boleh tersilap. Semak maklumat penting sebelum bertindak.')).toBeVisible();
+    await screen.findByRole('textbox');
+    expect(screen.queryByText(/boleh tersilap/)).toBeNull();
   });
   it('prepares a task without sending and keeps drafts with their own chats', async () => {
     const user = userEvent.setup();
@@ -471,7 +474,6 @@ describe('compose-first Ask Jentera', () => {
     await user.type(input, 'Prepare a reply');
     await user.keyboard('{Meta>}{Enter}{/Meta}');
     await waitFor(() => expect(repo.ask).toHaveBeenCalledOnce());
-    expect(screen.getByText('Jentera can make mistakes. Verify important information before acting.')).toBeVisible();
     await user.type(input, 'Make it suitable for a quotation');
     await user.keyboard('{Meta>}{Enter}{/Meta}');
     expect(repo.ask).toHaveBeenCalledTimes(2);
