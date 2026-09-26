@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   HANDOFF_MAX_MS,
+  HANDOFF_READ_MS,
+  HANDOFF_SETTLE_MS,
   HandoffEngine,
   addUsage,
   handoffBudgetMs,
@@ -41,7 +43,10 @@ function fakeHermes(script) {
     calls,
     status: () => ({ status: 'completed', output: 'from status' }),
     async hermes(path, init = {}, profile) {
-      calls.push({ path, method: init.method ?? 'GET', profile, body: init.body ? JSON.parse(init.body) : undefined });
+      calls.push({
+        path, method: init.method ?? 'GET', profile, body: init.body ? JSON.parse(init.body) : undefined,
+        timeoutMs: init.timeoutMs,
+      });
       if (path === '/v1/runs' && init.method === 'POST') {
         started += 1;
         return Response.json({ run_id: `run_${profile}_${started}`, status: 'started' }, { status: 202 });
@@ -312,7 +317,7 @@ test('usage from a failed specialist is still added to the task', async () => {
   assert.deepEqual(handoffs.usageOf('task-1'), { input_tokens: 7, output_tokens: 2, total_tokens: 9 });
 });
 
-test("a stopped specialist's usage is still recovered from the one status read follow() makes", async () => {
+test("a stopped specialist's usage is still counted once Hermes has recorded its end", async () => {
   const { handoffs, fake } = engine(() => []);
   fake.events = async (_runId, _profile, signal) => hangingEvents(signal);
   fake.status = () => ({ status: 'cancelled', usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4 } });
@@ -321,7 +326,96 @@ test("a stopped specialist's usage is still recovered from the one status read f
   await handoffs.stopTask('task-1');
   const result = await pending;
   assert.equal(result.code, 'stopped');
+  await handoffs.settled('task-1');
   assert.deepEqual(handoffs.usageOf('task-1'), { input_tokens: 3, output_tokens: 1, total_tokens: 4 });
+});
+
+/* Hermes answers a stop with `stopping` and writes the run's usage only when
+   its executor returns, as `cancelled`. Until 27 September the one status
+   read came straight after the abort, saw `stopping`, and the usage of every
+   stopped or timed-out specialist was lost. */
+test("a stopped specialist answers its caller at once, and its usage settles afterwards", async () => {
+  const { handoffs, fake } = engine(() => []);
+  fake.events = async (_runId, _profile, signal) => hangingEvents(signal);
+  let state = 'running';
+  fake.status = () => state === 'cancelled'
+    ? { status: 'cancelled', usage: { input_tokens: 30, output_tokens: 6, total_tokens: 36 } }
+    : { status: state };
+  const realHermes = fake.hermes.bind(fake);
+  fake.hermes = async (path, init, profile) => {
+    if (path.endsWith('/stop')) state = 'stopping';
+    return realHermes(path, init, profile);
+  };
+  const pending = handoffs.request(ask('records', 'A long job'));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await handoffs.stopTask('task-1');
+  assert.equal((await pending).code, 'stopped');
+  assert.equal(state, 'stopping');
+  assert.equal(handoffs.usageOf('task-1'), null, 'not counted before Hermes records the end');
+
+  const settled = handoffs.settled('task-1');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  state = 'cancelled';
+  await settled;
+  assert.deepEqual(handoffs.usageOf('task-1'), { input_tokens: 30, output_tokens: 6, total_tokens: 36 });
+  const reads = fake.calls.filter((call) => call.path === '/v1/runs/run_records_1');
+  assert.ok(reads.length >= 2, 'it kept asking until the run had ended');
+  assert.ok(reads.every((call) => call.timeoutMs <= HANDOFF_READ_MS), 'every read is capped');
+});
+
+test('settling gives up after its window, and never holds the terminal record longer', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const { handoffs, fake } = engine(() => []);
+  fake.events = async (_runId, _profile, signal) => hangingEvents(signal);
+  fake.status = () => ({ status: 'stopping' });
+  const pending = handoffs.request(ask('records', 'A long job'));
+  await flush();
+  await flush();
+  await handoffs.stopTask('task-1');
+  assert.equal((await pending).code, 'stopped');
+  let done = false;
+  void handoffs.settled('task-1').then(() => { done = true; });
+  for (let elapsed = 0; elapsed < HANDOFF_SETTLE_MS && !done; elapsed += 500) {
+    t.mock.timers.tick(500);
+    await flush();
+  }
+  await flush();
+  assert.equal(done, true);
+  assert.equal(handoffs.usageOf('task-1'), null);
+});
+
+test("the budget clock starts before the start POST, so a slow start cannot stretch the caller's wait", async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const { handoffs, fake } = engine(() => []);
+  handoffs.register('task-1', {
+    rootRunId: 'run_root', deadlineAt: NOW + 160_000, model: 'deep-model', handoff: LIMITS,
+  });
+  fake.events = async (_runId, _profile, signal) => hangingEvents(signal);
+  let releaseStart;
+  const held = new Promise((resolve) => { releaseStart = resolve; });
+  const realHermes = fake.hermes.bind(fake);
+  fake.hermes = async (path, init, profile) => {
+    if (path === '/v1/runs' && init?.method === 'POST') await held;
+    return realHermes(path, init, profile);
+  };
+  let answered = null;
+  void handoffs.request(ask('records', 'Reconcile')).then((result) => { answered = result; });
+  await flush();
+
+  /* 160 s left, 60 s kept back: a 100 s budget, all of it spent waiting on the start. */
+  t.mock.timers.tick(100_000);
+  await flush();
+  await flush();
+  assert.equal(answered?.code, 'time', 'the caller is answered at its budget, not when the POST returns');
+
+  releaseStart();
+  await flush();
+  await flush();
+  await handoffs.settled('task-1');
+  assert.ok(fake.calls.some((call) => call.path === '/v1/runs/run_records_1/stop'),
+    'the run the late POST created is stopped');
 });
 
 test('only tool and approval events are relayed, always carrying which agent produced them', async () => {
@@ -376,10 +470,11 @@ test('a stop that lands while the start POST is still in flight still stops that
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   await handoffs.stopTask('task-1');
+  /* Answered at once, not when the start comes back. */
+  assert.equal((await pending).code, 'stopped');
   releaseStart();
 
-  const result = await pending;
-  assert.equal(result.code, 'stopped');
+  await handoffs.settled('task-1');
   assert.ok(fake.calls.some((call) => call.path === '/v1/runs/run_records_1/stop' && call.profile === 'records'));
 });
 

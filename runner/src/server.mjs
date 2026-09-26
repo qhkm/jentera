@@ -591,8 +591,12 @@ export function createRunner(input) {
   /* A specialist's tokens are the task's tokens: threaded into every place
      that can freeze a task's terminal record, not only the two request
      routes — the watchdog, /readyz and admission all read the run's status
-     through activeTask and may be first to see it end. */
-  const handoffUsageOf = (taskId) => handoffs.usageOf(taskId);
+     through activeTask and may be first to see it end. Each waits, bounded,
+     for a stopped specialist's usage to settle before it freezes one. */
+  const handoffDeps = {
+    handoffUsage: (taskId) => handoffs.usageOf(taskId),
+    handoffSettled: (taskId) => handoffs.settled(taskId),
+  };
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
   let admittingTaskId = null;
@@ -610,12 +614,12 @@ export function createRunner(input) {
     state,
     streams,
     (taskId) => admittingTaskId === taskId,
-    { handoffUsage: handoffUsageOf, stopTask: (taskId) => handoffs.stopTask(taskId) },
+    { ...handoffDeps, stopTask: (taskId) => handoffs.stopTask(taskId) },
   );
   /* A document must not change under a run in flight: Hermes reads its config
      when the agent is created, so swapping mid-run would give one task two
      configurations. */
-  const slotBusy = async () => admitting || Boolean(await businessBrowser?.isPaused()) || Boolean(await activeTask(config, state, terminations, handoffUsageOf));
+  const slotBusy = async () => admitting || Boolean(await businessBrowser?.isPaused()) || Boolean(await activeTask(config, state, terminations, handoffDeps));
 
   /* Started in the background and never awaited: /readyz must not wait on the
      control plane, and a sprite whose control plane is away has to come up on
@@ -641,7 +645,7 @@ export function createRunner(input) {
        expired task is quarantined even between requests. unref keeps test
        processes and idle runtimes free to exit. */
     watchdog = setInterval(() => {
-      void activeTask(config, state, terminations, handoffUsageOf)
+      void activeTask(config, state, terminations, handoffDeps)
         .then((active) => {
           if (active) {
             console.warn(`[watchdog] slot held by ${active.taskId} (started ${active.startedAt ?? 'unknown'})`);
@@ -745,7 +749,7 @@ export function createRunner(input) {
         if (admitting) return json(res, 409, { error: 'runtime_busy' });
         admitting = true;
         try {
-          if (await activeTask(config, state, terminations, handoffUsageOf)) return json(res, 409, { error: 'runtime_busy' });
+          if (await activeTask(config, state, terminations, handoffDeps)) return json(res, 409, { error: 'runtime_busy' });
           const removed = await forgetAgentMemory(config, body);
           if (!removed) return json(res, 404, { error: 'not_found' });
           return json(res, 200, { ok: true });
@@ -771,10 +775,10 @@ export function createRunner(input) {
                 !['quarantined', 'expiring'].includes(active.status) &&
                 !(typeof active.deadlineAt === 'number' && Date.now() >= active.deadlineAt));
             });
-            const active = await activeTask(config, state, terminations, handoffUsageOf);
+            const active = await activeTask(config, state, terminations, handoffDeps);
             if (!active || active.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
             const frame = await businessBrowser.preview();
-            const stillActive = await activeTask(config, state, terminations, handoffUsageOf);
+            const stillActive = await activeTask(config, state, terminations, handoffDeps);
             if (!stillActive || stillActive.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
             return json(res, 200, frame);
           }
@@ -783,7 +787,7 @@ export function createRunner(input) {
           if (admitting) return json(res, 409, { error: 'runtime_busy' });
           admitting = true;
           try {
-            const active = await activeTask(config, state, terminations, handoffUsageOf);
+            const active = await activeTask(config, state, terminations, handoffDeps);
             if (active) return json(res, 409, { error: 'runtime_busy' });
             return json(res, 200, await businessBrowser.command(body));
           }
@@ -820,7 +824,7 @@ export function createRunner(input) {
         /* Reconcile the slot on probe: a dead/expired task is quarantined
            even when no new task arrives to trigger it (health checks hit
            this endpoint periodically). */
-        const active = await activeTask(config, state, terminations, handoffUsageOf);
+        const active = await activeTask(config, state, terminations, handoffDeps);
         /* The slot was just reconciled, so this is the natural moment to let a
            held document land: the probe runs periodically whether or not a
            task arrives. Never allowed to fail the probe — a config that will
@@ -892,7 +896,7 @@ export function createRunner(input) {
           });
         }
 
-        const active = await activeTask(config, state, terminations, handoffUsageOf);
+        const active = await activeTask(config, state, terminations, handoffDeps);
         const browserPaused = await businessBrowser?.isPaused();
         if (active || admitting || browserPaused) {
           /* Say which kind of busy this is. An owner holding the browser and a
@@ -1129,7 +1133,7 @@ export function createRunner(input) {
           }
           return json(res, 502, { ok: false, error: 'Hermes status failed' });
         }
-        const observed = await persistObservedStatus(state, saved, result, { config, handoffUsage: (taskId) => handoffs.usageOf(taskId) });
+        const observed = await persistObservedStatus(state, saved, result, { config, ...handoffDeps });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -1177,7 +1181,7 @@ export function createRunner(input) {
         if (stopStatus !== 'stopping' && !TERMINAL.has(stopStatus)) {
           return json(res, 502, { ok: false, error: 'Hermes returned an invalid stop outcome' });
         }
-        const observed = await persistObservedStatus(state, saved, result, { config, handoffUsage: (taskId) => handoffs.usageOf(taskId) });
+        const observed = await persistObservedStatus(state, saved, result, { config, ...handoffDeps });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -1444,7 +1448,7 @@ function validated(config) {
   };
 }
 
-async function activeTask(config, state, terminations, handoffUsage, now = Date.now()) {
+async function activeTask(config, state, terminations, handoffDeps, now = Date.now()) {
   for (const saved of await state.all()) {
     if (TERMINAL.has(saved.status) || savedTerminalStatus(saved)) continue;
     /* L2: a task may hold the runner only for a bounded interval. Hermes
@@ -1502,7 +1506,7 @@ async function activeTask(config, state, terminations, handoffUsage, now = Date.
     }
     const current = await responseJson(response);
     if (typeof current?.status === 'string') {
-      const observed = await persistObservedStatus(state, saved, current, { config, handoffUsage });
+      const observed = await persistObservedStatus(state, saved, current, { config, ...handoffDeps });
       if (!TERMINAL.has(observed.status)) {
         return { ...saved, status: observed.status, startedAt: saved.startedAt ?? null };
       }
@@ -1605,13 +1609,16 @@ function hermesProfilePath(path, profile) {
 }
 
 async function hermes(config, path, init = {}, profile) {
+  /* A caller may shorten the wait and end it early; nothing waits longer. */
+  const { signal, timeoutMs = 30_000, ...rest } = init;
+  const timeout = AbortSignal.timeout(Math.min(timeoutMs, 30_000));
   return fetch(`${config.hermesOrigin}${hermesProfilePath(path, profile)}`, {
-    ...init,
+    ...rest,
     headers: {
       Authorization: `Bearer ${config.hermesKey}`,
-      ...(init.headers ?? {}),
+      ...(rest.headers ?? {}),
     },
-    signal: AbortSignal.timeout(30_000),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
 }
 
@@ -1861,6 +1868,10 @@ async function persistObservedStatus(state, saved, result, deps = {}) {
   const already = savedTerminalStatus(saved);
   if (already) return already;
   let observed = boundedTaskStatus(result);
+  /* A specialist stopped with its task goes on settling its usage after its
+     caller was answered; the terminal record is final, so it waits for that
+     first (bounded by the engine). */
+  if (TERMINAL.has(observed.status)) await deps.handoffSettled?.(saved.taskId);
   /* Specialists' tokens are the task's tokens. Added only to a measured
      figure: a missing root figure makes the worker charge its ceiling, and
      a partial one would undercount. */
@@ -1964,6 +1975,7 @@ class RunTerminations {
     this.streams = streams;
     this.admissionInFlight = admissionInFlight;
     this.handoffUsage = deps.handoffUsage;
+    this.handoffSettled = deps.handoffSettled;
     this.stopHandoffTask = deps.stopTask;
     this.deadlines = new Map();
     this.retries = new Map();
@@ -1975,7 +1987,8 @@ class RunTerminations {
    *  figure, the same rule persistObservedStatus applies on the request
    *  routes — this is the same merge for the paths that freeze a terminal
    *  record without going through it (deadline, quarantine, orphan). */
-  mergedUsage(taskId, usage) {
+  async mergedUsage(taskId, usage) {
+    await this.handoffSettled?.(taskId);
     const handoffUsage = this.handoffUsage?.(taskId);
     return handoffUsage && usage ? addUsage(usage, handoffUsage) : usage;
   }
@@ -2185,7 +2198,7 @@ class RunTerminations {
 
   async finalize(saved, terminalStatus, reason, observed) {
     const bounded = boundedTaskStatus(observed);
-    const usage = this.mergedUsage(saved.taskId, bounded.usage);
+    const usage = await this.mergedUsage(saved.taskId, bounded.usage);
     const terminal = {
       ...bounded,
       ...(usage ? { usage } : {}),
@@ -2206,7 +2219,7 @@ class RunTerminations {
   }
 
   async adoptTerminal(saved, terminal) {
-    const usage = this.mergedUsage(saved.taskId, terminal.usage);
+    const usage = await this.mergedUsage(saved.taskId, terminal.usage);
     const merged = usage ? { ...terminal, usage } : terminal;
     const record = { ...saved, status: merged.status, terminal: merged };
     await this.state.put(saved.taskId, record);

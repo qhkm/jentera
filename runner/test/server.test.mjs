@@ -41,6 +41,8 @@ let ensureBarrier;
 let ensureCalls;
 let eventsByRun = {};
 let holdRootEvents = null;
+/** Per-run status, for a run whose life differs from the shared one. */
+let runStatus = null;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
@@ -61,6 +63,7 @@ beforeEach(async () => {
   ensureCalls = 0;
   eventsByRun = {};
   holdRootEvents = null;
+  runStatus = null;
   hermesEventsList = [
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
@@ -126,6 +129,8 @@ beforeEach(async () => {
     }
     if (requestPath?.startsWith('/v1/runs/')) {
       if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
+      const own = runStatus?.(requestPath.split('/').at(-1));
+      if (own) return reply(res, 200, own);
       return reply(res, 200, {
         run_id: requestPath.split('/').at(-1),
         status: hermesStatus,
@@ -1130,6 +1135,37 @@ test('stopping the task stops the specialist working for it', async () => {
   release();
 });
 
+/* Hermes answers a stop with `stopping` and records the run's usage only
+   when it has actually ended. The caller's tool is answered at once; the
+   specialist's tokens reach the task's terminal record anyway. */
+test("a stopped specialist's usage still reaches the task's terminal record", async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'running';
+  eventsByRun['run-2'] = [];
+  let readsAfterStop = 0;
+  runStatus = (runId) => {
+    if (runId !== 'run-2') return null;
+    if (!hermesPaths.includes('/p/records/v1/runs/run-2/stop')) return { status: 'running' };
+    readsAfterStop += 1;
+    return readsAfterStop < 3
+      ? { status: 'stopping' }
+      : { status: 'cancelled', usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 } };
+  };
+  try {
+    await start(TASK, { handoff: HANDOFF });
+    const pending = handOff({ runId: 'run-1', specialist: 'records', brief: 'A long job' });
+    await waitFor(() => hermesPaths.includes('/p/records/v1/runs/run-2'), 3_000);
+    assert.equal((await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' })).status, 200);
+    assert.equal((await (await pending).json()).code, 'stopped');
+    assert.ok(readsAfterStop < 3, 'the tool was answered before the specialist had ended');
+    const status = await (await call(`/v1/tasks/${TASK}`)).json();
+    assert.equal(status.status, 'cancelled');
+    assert.deepEqual(status.usage, { input_tokens: 142, output_tokens: 32, total_tokens: 174 });
+  } finally {
+    release();
+  }
+});
+
 test('a malformed hand-off body answers 400 and never logs its bytes', async () => {
   const logged = [];
   const originalError = console.error;
@@ -1221,6 +1257,10 @@ test('an aged task quarantine stops the specialist working for it', async () => 
   assert.equal((await start(TASK_2)).status, 202);
   assert.equal((await (await pending).json()).code, 'stopped');
   assert.ok(hermesPaths.includes('/p/records/v1/runs/run-2/stop'));
+  /* The quarantine froze the record only after the stopped specialist's
+     usage had settled: the root's 42/12 and the specialist's own. */
+  const frozen = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.deepEqual(frozen.usage, { input_tokens: 84, output_tokens: 24, total_tokens: 108 });
   release();
 });
 

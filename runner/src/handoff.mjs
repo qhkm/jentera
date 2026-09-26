@@ -19,6 +19,14 @@ export const HANDOFF_MAX_MS = 390_000;
 export const HANDOFF_ANSWER_RESERVE_MS = 60_000;
 /** Less time than this is not worth starting a specialist for. */
 export const HANDOFF_MIN_MS = 15_000;
+/** One read of Hermes while a hand-off is live or settling. Capped so no
+    single read can carry the tool past its budget. */
+export const HANDOFF_READ_MS = 5_000;
+/** After an aborted hand-off, how long its usage may take to settle: the
+    stop, then Hermes's own record until it shows the run has ended. Hermes
+    writes a stopped run's usage only when its executor returns. */
+export const HANDOFF_SETTLE_MS = 12_000;
+const SETTLE_POLL_MS = 500;
 
 const PROFILE = /^[a-z][a-z0-9-]{0,47}$/;
 const RUN_ID = /^[A-Za-z0-9_-]{1,80}$/;
@@ -119,6 +127,20 @@ function pause(ms, signal) {
   });
 }
 
+/** `promise`'s value, or null as soon as `signal` aborts, whichever is first.
+    `promise` must not reject. */
+function untilAborted(promise, signal) {
+  if (signal.aborted) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const onAbort = () => resolve(null);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then((value) => {
+      signal.removeEventListener('abort', onAbort);
+      resolve(value);
+    });
+  });
+}
+
 /** Safe relay kinds: everything else `translate` might return stays off the stream. */
 const RELAYED_TYPES = new Set(['tool.started', 'tool.completed', 'approval']);
 
@@ -156,6 +178,9 @@ export class HandoffEngine {
       used: 0,
       usage: null,
       liveRuns: new Map(),
+      /* Every hand-off's own work, until its run has ended and its usage is
+         counted — which, after an abort, is after its caller has moved on. */
+      settling: new Set(),
       stopped: false,
       controller,
     });
@@ -168,6 +193,24 @@ export class HandoffEngine {
   /** Tokens the task's specialists used, to add to its own. */
   usageOf(taskId) {
     return this.tasks.get(taskId)?.usage ?? null;
+  }
+
+  /** Resolves once every hand-off of this task has finished settling its
+   *  usage, or after `maxMs`, whichever is first. Whatever freezes the task's
+   *  terminal record waits on this first: an aborted specialist's tokens
+   *  arrive after its caller was answered, and the record is final. */
+  async settled(taskId, maxMs = HANDOFF_SETTLE_MS + HANDOFF_READ_MS) {
+    const task = this.tasks.get(taskId);
+    if (!task?.settling.size) return;
+    let timer;
+    await Promise.race([
+      Promise.allSettled([...task.settling]),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, maxMs);
+        timer.unref?.();
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   /** Stop every specialist working for this task, and refuse any that would follow. */
@@ -225,30 +268,69 @@ export class HandoffEngine {
     if (budgetMs < HANDOFF_MIN_MS) return refuse('time');
     task.used += 1;
 
-    const started = await this.deps.hermes('/v1/runs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input: brief,
-        instructions: specialistInstructions(task.preamble, entry, task.outputsInstruction),
-        ...(task.model ? { model: task.model } : {}),
-        model_options: { reasoning: { enabled: true, effort: 'high' } },
-      }),
-    }, key).catch(() => null);
-    const body = started?.ok ? await started.json().catch(() => null) : null;
-    /* Even a failed start is a stopped task's business first: the caller
-       already knows why nothing is happening for it. */
-    if (typeof body?.run_id !== 'string') return task.stopped ? fail('stopped') : fail('failed');
-
-    const runId = body.run_id;
-    /* This run's own budget timer, combined with whatever would already stop
-       its caller: either aborting unblocks the stream read below and stops
-       Hermes exactly once, whichever fired. */
+    /* The budget clock starts before the start POST, not after it: Hermes
+       gives the whole tool call 420 s, and a slow start has to come out of
+       this hand-off's time rather than be added to it. The run's own timer
+       is combined with whatever would already stop its caller, so either
+       ends the hand-off and stops Hermes exactly once. */
     const own = new AbortController();
     const signal = AbortSignal.any([caller.signal, own.signal]);
     const deadline = this.deps.now() + budgetMs;
-    this.runs.set(runId, { taskId: task.taskId, depth, chain: [...caller.chain, key], queue: Promise.resolve(), signal, deadline });
+    const timer = setTimeout(() => own.abort(), budgetMs);
+    const ctx = { runId: null };
+    const work = this.work(task, { key, entry, brief, depth, chain: [...caller.chain, key], signal, deadline, mark, ctx });
+    task.settling.add(work);
+    void work.then(() => task.settling.delete(work));
+    try {
+      /* The caller is answered the moment the hand-off ends, whatever ended
+         it. Only a finished run's own result is waited for; an aborted one
+         goes on settling its usage in the background. */
+      const outcome = await untilAborted(work, signal);
+      if (task.stopped) return fail('stopped');
+      if (!outcome || signal.aborted) return fail('time');
+      if (!outcome.started) return fail('failed');
+      if (outcome.status === 'completed' && typeof outcome.output === 'string' && outcome.output.trim()) {
+        mark('finished');
+        return { ok: true, specialist: key, name: entry.name, answer: outcome.output.slice(0, HANDOFF_ANSWER_MAX) };
+      }
+      return fail(BUDGET.test(String(outcome.error ?? '')) ? 'budget' : 'failed');
+    } finally {
+      clearTimeout(timer);
+      /* Ended for its caller: nothing more may be asked in this run's name,
+         and its still-unanswered approval must not sit at the head of the
+         task's queue blocking every later one. Its work may still be
+         settling; that repeats both, harmlessly. */
+      if (ctx.runId) {
+        this.runs.delete(ctx.runId);
+        this.deps.ended?.(task.taskId, ctx.runId);
+      }
+    }
+  }
 
+  /** One hand-off's run from start to end: started, followed, and — when it
+   *  was cut short — stopped and settled, so its usage is counted whatever
+   *  ended it. Never rejects. */
+  async work(task, { key, entry, brief, depth, chain, signal, deadline, mark, ctx }) {
+    let body = null;
+    try {
+      const started = await this.deps.hermes('/v1/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: brief,
+          instructions: specialistInstructions(task.preamble, entry, task.outputsInstruction),
+          ...(task.model ? { model: task.model } : {}),
+          model_options: { reasoning: { enabled: true, effort: 'high' } },
+        }),
+      }, key);
+      body = started?.ok ? await started.json().catch(() => null) : null;
+    } catch {
+      body = null;
+    }
+    if (typeof body?.run_id !== 'string') return { started: false };
+
+    const runId = body.run_id;
+    ctx.runId = runId;
     let stopping = null;
     const stopOnce = () => {
       if (!stopping) {
@@ -260,26 +342,28 @@ export class HandoffEngine {
     task.liveRuns.set(runId, { profile: key, stopOnce });
     const onAbort = () => { void stopOnce(); };
     signal.addEventListener('abort', onAbort, { once: true });
-    mark('started');
-    /* A stop that landed while the start's own POST was in flight leaves the
-       combined signal already aborted the moment it is built above: an
-       'abort' listener added to an already-aborted signal never fires, and
-       aborting `own` now would not either, since nothing transitions.
-       Sending the stop directly is the only way this run still gets one. */
-    if (signal.aborted) void stopOnce();
-    const timer = setTimeout(() => own.abort(), budgetMs);
     try {
-      const outcome = await this.follow(task.taskId, runId, key, signal);
-      if (outcome.usage) task.usage = addUsage(task.usage, outcome.usage);
-      if (task.stopped) return fail('stopped');
-      if (signal.aborted) return fail('time');
-      if (outcome.status === 'completed' && typeof outcome.output === 'string' && outcome.output.trim()) {
-        mark('finished');
-        return { ok: true, specialist: key, name: entry.name, answer: outcome.output.slice(0, HANDOFF_ANSWER_MAX) };
+      /* A stop or timeout that landed while the start's own POST was in
+         flight leaves the signal already aborted: an 'abort' listener added
+         now never fires, and the caller has already been answered. Stop it
+         directly and only settle. */
+      let outcome = null;
+      if (!signal.aborted) {
+        this.runs.set(runId, { taskId: task.taskId, depth, chain, queue: Promise.resolve(), signal, deadline });
+        mark('started');
+        outcome = await this.follow(task.taskId, runId, key, signal);
       }
-      return fail(BUDGET.test(String(outcome.error ?? '')) ? 'budget' : 'failed');
+      if (!outcome) outcome = await this.settle(runId, key, stopOnce);
+      if (outcome?.usage) task.usage = addUsage(task.usage, outcome.usage);
+      else if (outcome?.status !== 'completed') {
+        /* Hermes writes no usage for a failed run, and a stopped one that
+           outlives the settling window is not waited on further. */
+        console.warn(JSON.stringify({ event: 'runner.handoff.usage_unmeasured', taskId: task.taskId, profile: key }));
+      }
+      return { started: true, ...(outcome ?? { status: 'cancelled' }) };
+    } catch {
+      return { started: true, status: 'failed' };
     } finally {
-      clearTimeout(timer);
       /* Detach rather than rely on the combined signal becoming unreachable:
          a cascade that arrives after this run has already concluded on its
          own must never send a stray, late stop for it. */
@@ -293,15 +377,38 @@ export class HandoffEngine {
     }
   }
 
+  /** After an abort: the stop, then Hermes's own record until it shows the
+   *  run has ended, which is when it carries the run's usage. Bounded by
+   *  HANDOFF_SETTLE_MS; null when the run had not ended by then. */
+  async settle(runId, profile, stopOnce) {
+    const window = new AbortController();
+    const timer = setTimeout(() => window.abort(), HANDOFF_SETTLE_MS);
+    timer.unref?.();
+    try {
+      await untilAborted(stopOnce().then(() => true), window.signal);
+      while (!window.signal.aborted) {
+        const outcome = await this.statusOnce(runId, profile, window.signal);
+        if (outcome) return outcome;
+        await pause(SETTLE_POLL_MS, window.signal);
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** One direct look at Hermes's own record of a run, if it has reached an end. */
-  async statusOnce(runId, profile) {
-    const response = await this.deps.hermes(`/v1/runs/${encodeURIComponent(runId)}`, {}, profile).catch(() => null);
+  async statusOnce(runId, profile, signal) {
+    const response = await this.deps.hermes(`/v1/runs/${encodeURIComponent(runId)}`,
+      { signal, timeoutMs: HANDOFF_READ_MS }, profile).catch(() => null);
     const status = response?.ok ? await response.json().catch(() => null) : null;
     const state = typeof status?.status === 'string' ? status.status.toLowerCase() : '';
     return TERMINAL.has(state) ? { status: state, output: status.output, usage: status.usage, error: status.error } : null;
   }
 
-  /** Follow a specialist's run to its end, relaying its tools and approvals. */
+  /** Follow a specialist's run to its end, relaying its tools and approvals.
+   *  Null when the hand-off was cut short first: settling it is not the
+   *  caller's wait. */
   async follow(taskId, runId, profile, signal) {
     const target = { runId, profile };
     if (!signal.aborted) {
@@ -315,6 +422,7 @@ export class HandoffEngine {
             const frames = buffer.split(/\r?\n\r?\n/);
             buffer = frames.pop() ?? '';
             for (const frame of frames) {
+              if (signal.aborted) return null;
               const event = parseFrame(frame);
               if (!event) continue;
               if (event.event === 'run.completed') return { status: 'completed', output: event.output, usage: event.usage };
@@ -326,19 +434,17 @@ export class HandoffEngine {
           }
         }
       } catch {
-        /* Stream lost or aborted; a direct look at Hermes below settles it,
-           at least once even when the run must not keep going. */
+        /* Stream lost or aborted; a direct look at Hermes below settles it. */
       }
     }
     /* No terminal event arrived over the stream. While the run is still
-       meant to continue, ask Hermes directly until one appears; otherwise —
-       stopped, timed out, or the stream simply ended — ask once more so a
-       usage figure Hermes already has is not lost. */
+       meant to continue, ask Hermes directly until one appears. Each read
+       is capped and ends with the hand-off, so none can hold the caller. */
     while (!signal.aborted) {
-      const outcome = await this.statusOnce(runId, profile);
+      const outcome = await this.statusOnce(runId, profile, signal);
       if (outcome) return outcome;
       await pause(1_000, signal);
     }
-    return (await this.statusOnce(runId, profile)) ?? { status: 'cancelled' };
+    return null;
   }
 }
