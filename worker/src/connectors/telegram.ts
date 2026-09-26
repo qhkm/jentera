@@ -663,6 +663,22 @@ export type UnseenKind = typeof UNSEEN_KINDS[number];
     about something the agent cannot see at all. */
 const CAPTION_READ: ReadonlySet<UnseenKind> = new Set(['photo', 'document']);
 
+export interface TelegramVoice {
+  fileId: string;
+  fileUniqueId: string;
+  durationS: number;
+  size?: number;
+}
+
+/** Longer than this is refused at the webhook. Measured 26 Sep: a 9.5-minute
+    note transcribes in one Whisper request in about 80 s. */
+export const VOICE_MAX_SECONDS = 600;
+
+export const VOICE_REPLIES = {
+  tooLong: 'That voice note is longer than 10 minutes. Send a shorter one, or type your message.',
+  unintelligible: 'I couldn’t make out that voice note. Please type your message.',
+} as const;
+
 export interface IncomingMessage {
   chatId: number;
   messageId: number;
@@ -677,6 +693,8 @@ export interface IncomingMessage {
   /** The owner typed a caption on content whose caption is not read (a voice
       note, a video), so the reply asks for those words on their own. */
   captionIgnored?: true;
+  /** A voice note to transcribe; `text` is then its caption, or empty. */
+  voice?: TelegramVoice;
 }
 
 export interface IncomingCallbackQuery {
@@ -747,6 +765,25 @@ export function parseUpdate(body: unknown): IncomingMessage | null {
     return { ...base, text: text.slice(0, 4000) };
   }
 
+  const voice = msg.voice as {
+    file_id?: unknown; file_unique_id?: unknown; duration?: unknown; file_size?: unknown;
+  } | undefined;
+  if (voice && typeof voice.file_id === 'string' && voice.file_id.length <= 256 &&
+      typeof voice.file_unique_id === 'string' && voice.file_unique_id.length <= 128 &&
+      Number.isSafeInteger(voice.duration) && (voice.duration as number) >= 0) {
+    const caption = typeof msg.caption === 'string' ? msg.caption.trim().slice(0, 1024) : '';
+    return {
+      ...base,
+      text: caption,
+      voice: {
+        fileId: voice.file_id,
+        fileUniqueId: voice.file_unique_id,
+        durationS: voice.duration as number,
+        ...(Number.isSafeInteger(voice.file_size) ? { size: voice.file_size as number } : {}),
+      },
+    };
+  }
+
   const unseen = unseenKind(msg);
   if (!unseen) return null;
   const captioned = typeof msg.caption === 'string' && msg.caption.trim() !== '';
@@ -784,6 +821,24 @@ export function unreadableReply(kind: UnseenKind, captionIgnored = false): strin
   return captionIgnored
     ? `I can only read text messages for now. ${RESEND_CAPTION}`
     : 'I can only read text messages for now.';
+}
+
+/** Why a voice note will not be heard, or null when it will. A vault-held
+    bot cannot download yet (the vault has no file route), so it keeps the
+    stopgap answer rather than failing later in admission. */
+export function voiceRefusal(voice: TelegramVoice, credential: TelegramCredential): string | null {
+  if (isVaultTelegramCredential(credential)) return unreadableReply('voice');
+  if (voice.durationS > VOICE_MAX_SECONDS || (voice.size ?? 0) > TELEGRAM_FILE_MAX_BYTES) {
+    return VOICE_REPLIES.tooLong;
+  }
+  return null;
+}
+
+/** The transcript shown back before the answer, so a mishearing is caught
+    before it is acted on. Telegram caps a message at 4096 characters. */
+export function voiceEcho(transcript: string): string {
+  const shown = transcript.length > 3500 ? `${transcript.slice(0, 3500)}…` : transcript;
+  return `🎤 “${shown}”`;
 }
 
 const UNSEEN_NOUN: Record<UnseenKind, string> = {

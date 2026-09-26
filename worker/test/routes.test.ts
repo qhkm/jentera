@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, asTenant, fetchFake, req, sendFake, signIn, testEnv, truncateAll } from './harness';
 import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
+import { VOICE_REPLIES } from '../src/connectors/telegram';
 import {
   bindTelegramInternalChat,
   markWebhookUpdates,
@@ -1223,7 +1224,7 @@ describe('connections', () => {
     expect({ runs, tasks }).toEqual({ runs: '0', tasks: '0' });
   });
 
-  it('answers a photo, voice note or sticker it cannot read, and starts no run', async () => {
+  it('answers a photo, a malformed voice note or a sticker it cannot read, and starts no run', async () => {
     const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
@@ -1249,6 +1250,36 @@ describe('connections', () => {
     }
     expect(queued).toHaveLength(0);
     expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+  });
+
+  it('queues a voice note by its ids for transcription, and answers one that is too long', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    const owner = { chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'Owner' } };
+
+    fetch.mockClear();
+    expect((await telegramUpdate(paired.connectionId, paired.secret, {
+      ...owner, message_id: 50, voice: { file_id: 'AwAC', file_unique_id: 'AgAD', duration: 4, file_size: 9000 },
+    })).status).toBe(200);
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      kind: 'telegram_intake',
+      incoming: { chatId: 42, messageId: 50, text: '', voice: { fileId: 'AwAC', fileUniqueId: 'AgAD', durationS: 4 } },
+    });
+    expect(JSON.stringify(queued[0])).not.toMatch(/AAtoken|file_path/);
+    expect(fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage'))).toHaveLength(0);
+
+    fetch.mockClear();
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      ...owner, message_id: 51, voice: { file_id: 'AwAD', file_unique_id: 'AgAE', duration: 601 },
+    });
+    expect(queued).toHaveLength(1);
+    const sends = fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage'));
+    expect(JSON.parse(String(sends[0][1]?.body))).toMatchObject({ chat_id: 42, text: VOICE_REPLIES.tooLong });
   });
 
   it('runs a captioned photo as its caption, flagged as unseen', async () => {

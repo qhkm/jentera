@@ -267,6 +267,8 @@ export interface TelegramIntakeQueueMessage {
         A string, not `UnseenKind`: a message can outlive the worker that
         queued it, and a kind this version does not know still runs. */
     unseen?: string;
+    /** A voice note to hear before admission: ids only, never bytes. */
+    voice?: { fileId: string; fileUniqueId: string; durationS: number; size?: number };
   };
 }
 
@@ -2935,6 +2937,14 @@ async function settleFailedTelegramBubble(
   }
 }
 
+function validVoice(voice: unknown): boolean {
+  const v = voice as { fileId?: unknown; fileUniqueId?: unknown; durationS?: unknown; size?: unknown } | undefined;
+  return Boolean(v) && typeof v!.fileId === 'string' && v!.fileId.length > 0 && v!.fileId.length <= 256 &&
+    typeof v!.fileUniqueId === 'string' && v!.fileUniqueId.length > 0 && v!.fileUniqueId.length <= 128 &&
+    Number.isSafeInteger(v!.durationS) && (v!.durationS as number) >= 0 && (v!.durationS as number) <= 600 &&
+    (v!.size === undefined || Number.isSafeInteger(v!.size));
+}
+
 function validTelegramIntake(
   message: TelegramIntakeQueueMessage,
 ): message is TelegramIntakeQueueMessage {
@@ -2946,7 +2956,9 @@ function validTelegramIntake(
     Boolean(incoming) && Number.isSafeInteger(incoming.chatId) &&
     Number.isSafeInteger(incoming.messageId) &&
     typeof incoming.from === 'string' && incoming.from.length > 0 && incoming.from.length <= 256 &&
-    typeof incoming.text === 'string' && incoming.text.trim().length > 0 &&
+    typeof incoming.text === 'string' &&
+    (incoming.text.trim().length > 0 || validVoice(incoming.voice)) &&
+    (incoming.voice === undefined || validVoice(incoming.voice)) &&
     incoming.text.length <= 4_000 && incoming.privateChat === true &&
     (incoming.unseen === undefined ||
       (typeof incoming.unseen === 'string' && /^[a-z_]{1,32}$/.test(incoming.unseen)));

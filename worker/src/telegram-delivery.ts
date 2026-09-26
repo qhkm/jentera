@@ -7,6 +7,7 @@ import {
   editMessageText,
   sendHermesMessage,
   TelegramLiveStream,
+  type TelegramVoice,
   type UnseenKind,
 } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
@@ -22,6 +23,8 @@ export interface TelegramIncoming {
   privateChat?: boolean;
   /** Content the agent was not given (connectors/telegram.ts). */
   unseen?: UnseenKind;
+  /** A voice note to hear in admission: ids only, never bytes. */
+  voice?: TelegramVoice;
 }
 
 /** Deliver a Telegram response. Internal paired chats pass a known automatic

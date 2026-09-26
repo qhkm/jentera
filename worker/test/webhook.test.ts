@@ -23,6 +23,9 @@ import {
   TelegramLiveStream,
   setWebhook,
   unreadableReply,
+  VOICE_REPLIES,
+  voiceEcho,
+  voiceRefusal,
   withTypingIndicator,
   withUnseenMediaNote,
 } from '../src/connectors/telegram';
@@ -264,6 +267,23 @@ describe('reading an update', () => {
     }))).toMatchObject({ text: '', unseen: 'animation' });
   });
 
+  it('reads a voice note as its ids and length, not as unseen', () => {
+    expect(parseUpdate(message({
+      text: undefined,
+      voice: { file_id: 'AwAC', file_unique_id: 'AgAD', duration: 4, file_size: 9000, mime_type: 'audio/ogg' },
+    }))).toMatchObject({
+      text: '',
+      voice: { fileId: 'AwAC', fileUniqueId: 'AgAD', durationS: 4, size: 9000 },
+    });
+    expect(parseUpdate(message({
+      text: undefined, caption: 'for the Friday order',
+      voice: { file_id: 'AwAC', file_unique_id: 'AgAD', duration: 4 },
+    }))).toMatchObject({ text: 'for the Friday order', voice: { fileId: 'AwAC' } });
+    expect(parseUpdate(message({
+      text: undefined, voice: { file_id: 'AwAC', file_unique_id: 'AgAD', duration: 4 },
+    }))).not.toHaveProperty('unseen');
+  });
+
   it('notes a caption it did not read, on a voice note or video', () => {
     expect(parseUpdate(message({ text: undefined, caption: 'listen to this', voice: { file_id: 'v' } })))
       .toMatchObject({ text: '', unseen: 'voice', captionIgnored: true });
@@ -344,6 +364,27 @@ describe('reading an update', () => {
       ...update,
       callback_query: { ...update.callback_query, data: `har:x:${approvalId}` },
     })).toBeNull();
+  });
+});
+
+describe('deciding whether a voice note can be heard', () => {
+  const voice = { fileId: 'AwAC', fileUniqueId: 'AgAD', durationS: 30, size: 60_000 };
+  it('hears a bot the worker holds the token for', () => {
+    expect(voiceRefusal(voice, '123:AAtoken')).toBeNull();
+  });
+  it('says a note over ten minutes or twenty megabytes is too long', () => {
+    expect(voiceRefusal({ ...voice, durationS: 601 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
+    expect(voiceRefusal({ ...voice, size: 21 * 1024 * 1024 }, '123:AAtoken')).toBe(VOICE_REPLIES.tooLong);
+  });
+  it('keeps the old answer for a bot whose token is in the vault', () => {
+    const vault = { kind: 'vault' as const, env, businessId: A, secretId: 's' };
+    expect(voiceRefusal(voice, vault)).toBe(unreadableReply('voice'));
+  });
+  it('echoes a transcript within Telegram’s message limit', () => {
+    expect(voiceEcho('Tolong ingatkan saya.')).toBe('🎤 “Tolong ingatkan saya.”');
+    const echo = voiceEcho('a'.repeat(9000));
+    expect(echo.length).toBeLessThan(4096);
+    expect(echo.endsWith('…”')).toBe(true);
   });
 });
 

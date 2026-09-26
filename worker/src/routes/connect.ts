@@ -44,6 +44,7 @@ import {
   sendTyping,
   setWebhook,
   unreadableReply,
+  voiceRefusal,
   webhookHealth,
   withTypingIndicator,
   withUnseenMediaNote,
@@ -648,6 +649,18 @@ async function telegramWebhook(
     ).catch(() => {});
   }
 
+  /* A voice note is heard in admission. What cannot be heard is answered here,
+     after pairing and before admission, so it never costs a paid run. */
+  if (incoming.voice) {
+    const refusal = runtimeExecutionEnabled(env)
+      ? voiceRefusal(incoming.voice, token)
+      : unreadableReply('voice');
+    if (refusal) {
+      await sendMessage(token, incoming.chatId, refusal).catch(() => {});
+      return ok;
+    }
+  }
+
   /* Nothing here the agent can read: a photo or file with no caption, a voice
      note, a sticker. Say so. Silence made a working bot look broken on
      24 September. This is after the pairing check, so only the owner is
@@ -832,6 +845,7 @@ export async function handleIncoming(
       text: incoming.text,
       privateChat: true as const,
       ...(incoming.unseen ? { unseen: incoming.unseen } : {}),
+      ...(incoming.voice ? { voice: incoming.voice } : {}),
     };
     /* The webhook is a placed HTTP handler and the queue consumer is not
        (see inline-slice.ts): admission, dispatch and the first slice of the
