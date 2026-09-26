@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Button, Input } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useBusiness } from '@/hooks/useBusiness';
@@ -12,6 +12,10 @@ const DURATIONS = Array.from({ length: 32 }, (_, i) => (i + 1) * 15);
 const NOTICE = [0, 30, 60, 120, 240, 360, 720, 1440, 2880, 10080];
 const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED = new Set(['api', 'admin', 'www', 'app', 'b']);
+const BRAND_COLOR = /^#[0-9a-f]{6}$/i;
+const BRAND_COLORS = ['#4aebb5', '#62a8ff', '#a78bfa', '#f472b6', '#fb923c', '#facc15'] as const;
+const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const LOGO_MAX_BYTES = 1024 * 1024;
 
 interface DayDraft { open: boolean; opens: string; closes: string }
 interface BlockDraft { key: string; id: string | null; label: string; startsAt: string; endsAt: string }
@@ -112,6 +116,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const [changeCutoff, setChangeCutoff] = useState(config.settings?.changeCutoffMinutes ?? 360);
   const [horizon, setHorizon] = useState(config.settings?.horizonDays ?? 30);
   const [location, setLocation] = useState(config.settings?.location ?? '');
+  const [brandColor, setBrandColor] = useState(config.settings?.brandColor ?? '#4aebb5');
   const [blocks, setBlocks] = useState<BlockDraft[]>(() => config.blocks.map((block) => ({
     key: block.id, id: block.id, label: block.label, startsAt: malaysiaInput(block.startsAt), endsAt: malaysiaInput(block.endsAt),
   })));
@@ -119,6 +124,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<{ key: string; reload: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
   const [panel, setPanel] = useState<SettingsPanel>('services');
   const dayName = useMemo(() => {
     const format = new Intl.DateTimeFormat(lang === 'bm' ? 'ms-MY' : 'en-MY', { weekday: 'long', timeZone: 'UTC' });
@@ -158,6 +164,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       }
     }
     if (location.trim().length > 160) found.location = 'bookings.settings.error.location';
+    if (!BRAND_COLOR.test(brandColor)) found.brandColor = 'bookings.settings.error.brandColor';
     for (const block of blocks) {
       const start = malaysiaIso(block.startsAt);
       const end = malaysiaIso(block.endsAt);
@@ -176,7 +183,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     setErrors(found);
     if (Object.keys(found).length) {
       const keys = Object.keys(found);
-      if (keys.some((key) => key === 'location' || key === 'slug')) setPanel('page');
+      if (keys.some((key) => key === 'location' || key === 'slug' || key === 'brandColor')) setPanel('page');
       else if (keys.some((key) => key === 'horizon' || key === 'changeCutoff')) setPanel('rules');
       else if (keys.some((key) => key.endsWith('.range'))) setPanel('blocks');
       else if (keys.some((key) => key.endsWith('.hours') || key.includes('.day.'))) setPanel('hours');
@@ -191,6 +198,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       changeCutoffMinutes: changeCutoff,
       horizonDays: horizon,
       location: location.trim() || null,
+      brandColor: brandColor.toLowerCase(),
       acknowledgeAvailabilityLimits: installed || acknowledged,
       services: services.map((service) => ({
         id: service.id,
@@ -238,6 +246,37 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       else setProblem({ key: 'bookings.settings.error.generic', reload: false });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function uploadLogo(file: File | undefined) {
+    if (!file) return;
+    setProblem(null);
+    if (!LOGO_TYPES.has(file.type) || file.size === 0 || file.size > LOGO_MAX_BYTES) {
+      setProblem({ key: 'bookings.settings.logo.error', reload: false });
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      onSaved(await api.uploadBookingsLogo(file));
+    } catch (error) {
+      setProblem({ key: error instanceof AppsError && error.uncertain
+        ? 'bookings.settings.error.uncertain' : 'bookings.settings.logo.uploadError', reload: error instanceof AppsError && error.uncertain });
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function removeLogo() {
+    setProblem(null);
+    setLogoBusy(true);
+    try {
+      onSaved(await api.removeBookingsLogo());
+    } catch (error) {
+      setProblem({ key: error instanceof AppsError && error.uncertain
+        ? 'bookings.settings.error.uncertain' : 'bookings.settings.logo.removeError', reload: error instanceof AppsError && error.uncertain });
+    } finally {
+      setLogoBusy(false);
     }
   }
 
@@ -339,6 +378,42 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       </fieldset>)}
     </div>}
     {panel === 'page' && <div className="bookings-settings-fields">
+    <section className="bookings-branding" aria-labelledby="bookings-branding-title">
+      <div>
+        <h4 id="bookings-branding-title">{t('bookings.settings.branding')}</h4>
+        <p className="bookings-lead">{t('bookings.settings.branding.help')}</p>
+      </div>
+      <div className="bookings-logo-row">
+        <div className="bookings-logo-preview" style={{ '--booking-brand': brandColor } as CSSProperties}>
+          {config.settings?.logoUrl
+            ? <img src={config.settings.logoUrl} alt={t('bookings.settings.logo.preview')} />
+            : <span aria-hidden="true">{Array.from(business.name.trim())[0]?.toUpperCase()}</span>}
+        </div>
+        <div className="bookings-logo-actions">
+          <label className={`btn btn-outline${!installed || logoBusy ? ' disabled' : ''}`}>
+            {t(config.settings?.logoUrl ? 'bookings.settings.logo.replace' : 'bookings.settings.logo.add')}
+            <input type="file" accept="image/png,image/jpeg,image/webp" disabled={!installed || logoBusy}
+              onChange={(event) => { void uploadLogo(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+          </label>
+          {config.settings?.logoUrl && <Button type="button" variant="ghost" disabled={logoBusy} onClick={() => void removeLogo()}>
+            {t('bookings.settings.logo.remove')}
+          </Button>}
+          <small>{t(installed ? 'bookings.settings.logo.help' : 'bookings.settings.logo.publishFirst')}</small>
+        </div>
+      </div>
+      <fieldset className="bookings-color-field">
+        <legend>{t('bookings.settings.brandColor')}</legend>
+        <div className="bookings-color-options">
+          {BRAND_COLORS.map((color) => <button key={color} type="button" className={brandColor.toLowerCase() === color ? 'active' : ''}
+            aria-label={color} aria-pressed={brandColor.toLowerCase() === color} style={{ backgroundColor: color }} onClick={() => setBrandColor(color)} />)}
+          <label className="bookings-color-custom" title={t('bookings.settings.brandColor.custom')}>
+            <input type="color" value={BRAND_COLOR.test(brandColor) ? brandColor : '#4aebb5'} onChange={(event) => setBrandColor(event.target.value)} />
+            <span>+</span>
+          </label>
+        </div>
+      </fieldset>
+      {error('brandColor')}
+    </section>
     <label>{t('bookings.settings.location')}
       <Input value={location} maxLength={160} placeholder={t('bookings.settings.location.placeholder')}
         aria-invalid={Boolean(errors.location)} onChange={(event) => setLocation(event.target.value)} />

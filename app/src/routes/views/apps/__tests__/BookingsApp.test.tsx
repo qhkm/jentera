@@ -103,7 +103,7 @@ describe('BookingsApp', () => {
     let version = 3;
     const api = fakeAppsApi({ bookingsConfig: vi.fn(async () => configFixture({ version })) });
     const { client, user } = await mount(api, 'settings');
-    await user.click(await screen.findByRole('button', { name: 'Location and booking link' }));
+    await user.click(await screen.findByRole('button', { name: 'Booking page' }));
     const location = screen.getByLabelText('Where the booking takes place');
     await user.clear(location);
     await user.type(location, 'Level 2, Wisma Kita');

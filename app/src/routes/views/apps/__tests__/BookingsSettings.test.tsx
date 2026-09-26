@@ -43,7 +43,7 @@ describe('BookingsSettings', () => {
     await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
     await user.click(screen.getByRole('button', { name: 'Publish booking page' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith({
-      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null,
+      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null, brandColor: '#4aebb5',
       acknowledgeAvailabilityLimits: true,
       services: [{ id: null, name: 'Cupping class', description: null, durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
         hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '17:00' })) }],
@@ -58,15 +58,29 @@ describe('BookingsSettings', () => {
     const description = screen.getByLabelText('Description (optional)');
     await user.clear(description);
     await user.type(description, 'A focused session with our team.');
-    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
+    await user.click(screen.getByRole('button', { name: 'Booking page' }));
     const location = screen.getByLabelText('Where the booking takes place');
     await user.clear(location);
     await user.type(location, 'Online · Link shared after confirmation');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({
-      location: 'Online · Link shared after confirmation',
+      location: 'Online · Link shared after confirmation', brandColor: '#4aebb5',
       services: [expect.objectContaining({ description: 'A focused session with our team.' })],
     }));
+  });
+
+  it('saves an accent and uploads a validated logo from the booking page panel', async () => {
+    const api = fakeAppsApi();
+    const { onSaved, user } = await mount(configFixture(), api);
+    await user.click(screen.getByRole('button', { name: 'Booking page' }));
+    expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '#62a8ff' }));
+    const logo = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'logo.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Add logo'), logo);
+    expect(api.uploadBookingsLogo).toHaveBeenCalledWith(logo);
+    expect(onSaved).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ brandColor: '#62a8ff' }));
   });
 
   it('saves the customer change deadline and explains reminder delivery accurately', async () => {
@@ -161,7 +175,7 @@ describe('BookingsSettings', () => {
 
   it('does not show a link as if it were live before the page is published', async () => {
     const { user } = await mount(NEW);
-    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
+    await user.click(screen.getByRole('button', { name: 'Booking page' }));
     expect(screen.getByText('Once published, your link will end in /b/kedai-kita')).toBeInTheDocument();
     expect(screen.queryByText('…/b/kedai-kita')).toBeNull();
   });
@@ -169,7 +183,7 @@ describe('BookingsSettings', () => {
   it('still renders when the saved link is not a full address', async () => {
     const config = configFixture({ installation: { slug: 'seido', state: 'active', publicUrl: '/b/seido' } });
     const { user } = await mount(config);
-    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
+    await user.click(screen.getByRole('button', { name: 'Booking page' }));
     expect(screen.getByText('…/b/seido')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeInTheDocument();
   });
@@ -182,8 +196,8 @@ describe('BookingsSettings', () => {
     expect(screen.getByRole('button', { name: 'Services' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByLabelText('Description (optional)')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
-    expect(screen.getByRole('button', { name: 'Location and booking link' })).toHaveAttribute('aria-current', 'page');
+    await user.click(screen.getByRole('button', { name: 'Booking page' }));
+    expect(screen.getByRole('button', { name: 'Booking page' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByLabelText('Description (optional)')).toBeNull();
     expect(screen.getByText('https://sites.test/b/seido')).toBeInTheDocument();
     expect(screen.getByLabelText('Where the booking takes place')).toBeInTheDocument();

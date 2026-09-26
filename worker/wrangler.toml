@@ -403,6 +403,10 @@ directory = "./public-sites"
 binding = "HYPERDRIVE"
 id = "f77c72f8d6614bb0b6955170caadad07"
 
+[[env.sites.r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "jentera-artifacts"
+
 [env.sites.vars]
 APPS_ENABLED = "true"
 APPS_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"

@@ -106,7 +106,16 @@ export interface BookingBlock {
 export interface BookingsConfig {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; changeCutoffMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
+  settings: {
+    accepting: boolean;
+    minNoticeMinutes: number;
+    changeCutoffMinutes: number;
+    horizonDays: number;
+    location: string | null;
+    brandColor: string;
+    logoUrl: string | null;
+    availabilityAcknowledgedAt: string;
+  } | null;
   services: BookingService[];
   blocks: BookingBlock[];
   calendarProtection: { connected: boolean; account: string | null; syncedAt: string | null; lastError: string | null };
@@ -125,6 +134,7 @@ export interface BookingsConfigInput {
   changeCutoffMinutes: number;
   horizonDays: number;
   location: string | null;
+  brandColor: string;
   acknowledgeAvailabilityLimits: boolean;
   services: BookingServiceInput[];
   blocks: Array<{ id: string | null; label: string; startsAt: string; endsAt: string }>;
@@ -134,6 +144,8 @@ export interface AppsApi {
   list(): Promise<AppsList>;
   bookingsConfig(): Promise<BookingsConfig>;
   saveBookingsConfig(input: BookingsConfigInput): Promise<BookingsConfig>;
+  uploadBookingsLogo(file: File): Promise<BookingsConfig>;
+  removeBookingsLogo(): Promise<BookingsConfig>;
   bookings(query: BookingsQuery): Promise<BookingsPage>;
   booking(id: string): Promise<Booking>;
   decide(id: string, decision: 'confirm' | 'decline'): Promise<BookingActionResult>;

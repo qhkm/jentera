@@ -16,6 +16,47 @@ import { refreshBookingCalendarAvailability } from '../apps/bookings/calendar-av
 
 /** Today plus the longest booking horizon (90 days), counting today as day 0. */
 const PENDING_WINDOW_DAYS = 91;
+const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_TYPES = new Map([
+  ['image/png', 'png'],
+  ['image/jpeg', 'jpg'],
+  ['image/webp', 'webp'],
+] as const);
+
+async function readLogo(request: Request): Promise<Uint8Array | null> {
+  if (!request.body || Number(request.headers.get('Content-Length')) > LOGO_MAX_BYTES) return null;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > LOGO_MAX_BYTES) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  if (size === 0) return null;
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function matchesLogoType(bytes: Uint8Array, contentType: string): boolean {
+  if (contentType === 'image/png') {
+    return bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, i) => bytes[i] === byte);
+  }
+  if (contentType === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  return contentType === 'image/webp' && bytes.length >= 12
+    && new TextDecoder().decode(bytes.slice(0, 4)) === 'RIFF'
+    && new TextDecoder().decode(bytes.slice(8, 12)) === 'WEBP';
+}
 
 /* Business apps, owner side. Spec: docs/plans/2026-09-23-apps-shell-and-bookings-v1.md.
    Every path answers 404 unless the business is on the apps pilot list, so
@@ -122,6 +163,67 @@ async function appsRoute(
         return json({ ok: false, code: error.code, serviceId: error.serviceId },
           { status: error.code === 'ACK_REQUIRED' ? 400 : 409 }, cors);
       }
+    }
+  }
+
+  if (url.pathname === '/api/apps/bookings/logo') {
+    if (!can(identity, 'apps.manage')) return forbidden(cors);
+    if (!env.ARTIFACTS) return json({ ok: false, err: 'logo storage unavailable' }, { status: 503 }, cors);
+    if (request.method === 'PUT') {
+      const contentType = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+      const extension = LOGO_TYPES.get(contentType as 'image/png' | 'image/jpeg' | 'image/webp');
+      if (!extension) return json({ ok: false, err: 'logo must be PNG, JPEG or WebP' }, { status: 415 }, cors);
+      const bytes = await readLogo(request);
+      if (!bytes) return json({ ok: false, err: 'logo must be between 1 byte and 1 MB' }, { status: 413 }, cors);
+      if (!matchesLogoType(bytes, contentType)) return json({ ok: false, err: 'logo file does not match its image type' }, { status: 400 }, cors);
+      const key = `bookings/${businessId}/branding/${crypto.randomUUID()}.${extension}`;
+      await env.ARTIFACTS.put(key, bytes, { httpMetadata: { contentType, cacheControl: 'public, max-age=31536000, immutable' } });
+      try {
+        const result = await withTenant(env, businessId, async (tx) => {
+          const [current] = await tx<{ logo_key: string | null }[]>`
+            select logo_key from booking_settings where business_id = ${businessId} for update`;
+          if (!current) return null;
+          await tx`update booking_settings set logo_key = ${key}, logo_content_type = ${contentType}, logo_updated_at = ${now}, updated_at = ${now}
+            where business_id = ${businessId}`;
+          await tx`update app_installation set config_version = config_version + 1, updated_at = ${now}
+            where business_id = ${businessId} and app_key = 'bookings'`;
+          return { oldKey: current.logo_key, config: await readConfig(tx, businessId, sitesOrigin) };
+        });
+        if (!result) {
+          await env.ARTIFACTS.delete(key);
+          return notFound(cors);
+        }
+        if (result.oldKey && result.oldKey !== key) {
+          const remove = env.ARTIFACTS.delete(result.oldKey).catch(() => {});
+          execution?.waitUntil(remove);
+          if (!execution) await remove;
+        }
+        return json({ ok: true, config: result.config }, {}, cors);
+      } catch (error) {
+        await env.ARTIFACTS.delete(key).catch(() => {});
+        throw error;
+      }
+    }
+    if (request.method === 'DELETE') {
+      const result = await withTenant(env, businessId, async (tx) => {
+        const [current] = await tx<{ logo_key: string | null }[]>`
+          select logo_key from booking_settings where business_id = ${businessId} for update`;
+        if (!current) return null;
+        if (current.logo_key) {
+          await tx`update booking_settings set logo_key = null, logo_content_type = null, logo_updated_at = null, updated_at = ${now}
+            where business_id = ${businessId}`;
+          await tx`update app_installation set config_version = config_version + 1, updated_at = ${now}
+            where business_id = ${businessId} and app_key = 'bookings'`;
+        }
+        return { oldKey: current.logo_key, config: await readConfig(tx, businessId, sitesOrigin) };
+      });
+      if (!result) return notFound(cors);
+      if (result.oldKey) {
+        const remove = env.ARTIFACTS.delete(result.oldKey).catch(() => {});
+        execution?.waitUntil(remove);
+        if (!execution) await remove;
+      }
+      return json({ ok: true, config: result.config }, {}, cors);
     }
   }
 

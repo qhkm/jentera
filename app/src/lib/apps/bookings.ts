@@ -186,6 +186,7 @@ export function configToInput(config: BookingsConfig): BookingsConfigInput {
     changeCutoffMinutes: config.settings?.changeCutoffMinutes ?? 360,
     horizonDays: config.settings?.horizonDays ?? 30,
     location: config.settings?.location ?? null,
+    brandColor: config.settings?.brandColor ?? '#4aebb5',
     acknowledgeAvailabilityLimits: config.settings !== null,
     services: config.services.map((service) => ({ ...service, hours: service.hours.map((range) => ({ ...range })) })),
     blocks: config.blocks.map((block) => ({ ...block })),

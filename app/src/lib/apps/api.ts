@@ -55,6 +55,28 @@ async function call(path: string, write?: { method: 'POST' | 'PUT'; body: unknow
   return data;
 }
 
+async function logoCall(method: 'PUT' | 'DELETE', file?: File): Promise<Record<string, unknown>> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}/api/apps/bookings/logo`, {
+      method, credentials: 'include', cache: 'no-store',
+      ...(file ? { headers: { 'Content-Type': file.type }, body: file } : {}),
+    });
+  } catch {
+    throw new AppsError('NETWORK', 0, true);
+  }
+  const data: unknown = await response.json().catch(() => null);
+  if (!response.ok || (object(data) && data.ok === false)) {
+    const body = object(data) ? data : {};
+    throw new AppsError(
+      typeof body.code === 'string' ? body.code : response.status === 404 ? 'NOT_FOUND' : 'REQUEST_FAILED',
+      response.status, response.status >= 500, null, typeof body.err === 'string' ? body.err : undefined,
+    );
+  }
+  if (!object(data) || data.ok !== true) throw new AppsError('INVALID_RESPONSE', response.status, true);
+  return data;
+}
+
 const APP_KEYS: readonly AppKey[] = ['bookings'];
 const APP_STATES: readonly InstalledApp['state'][] = ['active', 'paused'];
 
@@ -135,6 +157,18 @@ export class RemoteAppsApi implements AppsApi {
 
   async saveBookingsConfig(input: BookingsConfigInput): Promise<BookingsConfig> {
     const data = await call('/bookings/config', { method: 'PUT', body: input });
+    if (!isConfig(data.config)) throw new AppsError('INVALID_RESPONSE', 200, true);
+    return data.config;
+  }
+
+  async uploadBookingsLogo(file: File): Promise<BookingsConfig> {
+    const data = await logoCall('PUT', file);
+    if (!isConfig(data.config)) throw new AppsError('INVALID_RESPONSE', 200, true);
+    return data.config;
+  }
+
+  async removeBookingsLogo(): Promise<BookingsConfig> {
+    const data = await logoCall('DELETE');
     if (!isConfig(data.config)) throw new AppsError('INVALID_RESPONSE', 200, true);
     return data.config;
   }

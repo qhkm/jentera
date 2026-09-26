@@ -20,7 +20,11 @@ export function configFixture(over: Partial<BookingsConfig> = {}): BookingsConfi
   return {
     installation: { slug: 'seido', state: 'active', publicUrl: 'https://sites.test/b/seido' },
     version: 3,
-    settings: { accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: '12 Jalan Example, Kuala Lumpur', availabilityAcknowledgedAt: '2026-10-01T00:00:00.000Z' },
+    settings: {
+      accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30,
+      location: '12 Jalan Example, Kuala Lumpur', brandColor: '#4aebb5', logoUrl: null,
+      availabilityAcknowledgedAt: '2026-10-01T00:00:00.000Z',
+    },
     services: [{
       id: SERVICE_ID, name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4, priceLabel: 'RM45', active: true,
       hours: [{ weekday: 2, opens: '10:00', closes: '13:00' }],
@@ -43,6 +47,8 @@ export function fakeAppsApi(over: Partial<FakeAppsApi> = {}): FakeAppsApi {
     list: vi.fn(async () => ({ apps: [], available: ['bookings' as const] })),
     bookingsConfig: vi.fn(async () => configFixture()),
     saveBookingsConfig: vi.fn(async () => configFixture()),
+    uploadBookingsLogo: vi.fn(async () => configFixture()),
+    removeBookingsLogo: vi.fn(async () => configFixture()),
     bookings: vi.fn(async () => ({ bookings: [], nextCursor: null })),
     booking: vi.fn(async () => bookingFixture()),
     decide: vi.fn(async () => ({ booking: bookingFixture({ status: 'confirmed' }), whatsappUrl: null, calendarQueued: false })),

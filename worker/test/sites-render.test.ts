@@ -72,6 +72,14 @@ describe('pages', () => {
     expect(html).toContain(`href="/b/seido?service=${service.id}&amp;lang=en"`);
   });
 
+  it('applies a validated business accent and logo across the page shell', () => {
+    const html = servicesPage({ ...base, brandColor: '#62A8FF', logoUrl: '/b/seido/logo', services: [service] });
+    expect(html).toContain(':root{--accent:#62a8ff;--focus:#62a8ff;--accent-ink:#080808}');
+    expect(html).toContain('<img src="/b/seido/logo" alt="" width="64" height="64">');
+    const unsafe = servicesPage({ ...base, brandColor: '</style><script>', logoUrl: null, services: [service] });
+    expect(unsafe).not.toContain('</style><script>');
+  });
+
   it('uses an honest location fallback when the owner has not added one', () => {
     expect(servicesPage({ ...base, location: null, services: [service] })).toContain('Confirmed on WhatsApp');
     expect(servicesPage({ ...base, lang: 'bm', location: null, services: [service] })).toContain('Disahkan melalui WhatsApp');

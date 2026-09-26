@@ -1,6 +1,6 @@
 import { appsEnabledFor } from '../apps/gating';
 import type { Lang } from '../apps/bookings/messages';
-import { loadOpenTimes, loadPublicPage, resolvePublicSlug, type PublicPage } from '../apps/bookings/public';
+import { loadOpenTimes, loadPublicLogo, loadPublicPage, resolvePublicSlug, type PublicPage } from '../apps/bookings/public';
 import { REFERENCE } from '../apps/bookings/reference';
 import { createBookingRequest, findSubmission, parseRequestForm, submissionDigest } from '../apps/bookings/request';
 import {
@@ -108,7 +108,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const slug = typed.toLowerCase();
   const sub = typedSub.endsWith('/') && typedSub !== '/' ? typedSub.slice(0, -1) : typedSub;
   const earlyLang = langOf(url, null);
-  const knownSub = sub === '' || sub === '/request' || sub === '/done' || sub === '/manage'
+  const knownSub = sub === '' || sub === '/request' || sub === '/done' || sub === '/manage' || sub === '/logo'
     || /^\/manage\/[A-Za-z0-9_-]{43}(?:\/(?:cancel|reschedule|calendar\.ics))?$/.test(sub);
   if (!knownSub) return notFound(earlyLang);
 
@@ -133,10 +133,28 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   // Not permanent: the business may take this name up again. 307 keeps a POST a POST.
   if (found.currentSlug !== slug) return redirect(`/b/${found.currentSlug}${sub}${url.search}`, 307);
   const businessId = found.businessId;
+  if (sub === '/logo') {
+    if (request.method !== 'GET' || !env.ARTIFACTS) return notFound(earlyLang);
+    const logo = await loadPublicLogo(env, businessId);
+    if (!logo) return notFound(earlyLang);
+    const object = await env.ARTIFACTS.get(logo.key);
+    if (!object) return notFound(earlyLang);
+    const etag = object.httpEtag;
+    if (request.headers.get('If-None-Match') === etag) {
+      return new Response(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
+    }
+    return new Response(object.body, { headers: {
+      'Content-Type': logo.contentType, 'Content-Length': String(object.size), ETag: etag,
+      'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+    } });
+  }
   const info = await loadPublicPage(env, businessId);
   if (!info) return notFound(earlyLang);
   const lang = langOf(url, info);
-  const base = { slug, lang, businessName: info.businessName, location: info.settings.location };
+  const base = {
+    slug, lang, businessName: info.businessName, location: info.settings.location, brandColor: info.settings.brandColor,
+    logoUrl: info.settings.hasLogo ? `/b/${slug}/logo` : null,
+  };
 
   const manageMatch = sub.match(/^\/manage\/([A-Za-z0-9_-]{43})(?:\/(cancel|reschedule|calendar\.ics))?$/);
   const sameOriginPost = () => request.headers.get('Origin') === origin;

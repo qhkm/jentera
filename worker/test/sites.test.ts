@@ -101,6 +101,28 @@ describe('sites: pages', () => {
     expect(res.headers.get('Set-Cookie')).toBeNull();
   });
 
+  it('uses the saved accent and serves the tenant logo from its exact object key', async () => {
+    const logoKey = `bookings/${A}/branding/logo.png`;
+    await asOwner((sql) => sql`update booking_settings set brand_color = '#62a8ff',
+      logo_key = ${logoKey}, logo_content_type = 'image/png', logo_updated_at = now()
+      where business_id = ${A}`);
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const getObject = vi.fn(async (key: string) => key === logoKey ? {
+      body: new Response(bytes).body!, size: bytes.byteLength, httpEtag: '"logo-etag"',
+    } : null);
+    const branded = env({ ARTIFACTS: { get: getObject } as unknown as R2Bucket });
+    const page = await get('/b/seido', branded);
+    const html = await page.text();
+    expect(html).toContain(':root{--accent:#62a8ff;--focus:#62a8ff;--accent-ink:#080808}');
+    expect(html).toContain('<img src="/b/seido/logo" alt="" width="64" height="64">');
+    const logo = await get('/b/seido/logo', branded);
+    expect(logo.status).toBe(200);
+    expect(logo.headers.get('Content-Type')).toBe('image/png');
+    expect(logo.headers.get('ETag')).toBe('"logo-etag"');
+    expect(new Uint8Array(await logo.arrayBuffer())).toEqual(bytes);
+    expect(getObject).toHaveBeenCalledWith(logoKey);
+  });
+
   it('answers 404 outside /b/, for unknown names, and for a business off the pilot list', async () => {
     expect((await get('/api/me')).status).toBe(404);
     expect((await get('/')).status).toBe(404);

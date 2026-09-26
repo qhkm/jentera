@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleApps } from '../src/routes/apps';
 import { asOwner, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
@@ -45,9 +45,9 @@ const service = (over: Record<string, unknown> = {}) => ({
 });
 const config = (over: Record<string, unknown> = {}) => ({
   version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: '12 Jalan Example',
-  acknowledgeAvailabilityLimits: true, services: [service()], blocks: [], ...over,
+  brandColor: '#4aebb5', acknowledgeAvailabilityLimits: true, services: [service()], blocks: [], ...over,
 });
-type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; services: Array<{ id: string; active: boolean; hours: unknown[] }>; blocks: Array<{ id: string; label: string; startsAt: string; endsAt: string }> } };
+type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; settings: { brandColor: string; logoUrl: string | null }; services: Array<{ id: string; active: boolean; hours: unknown[] }>; blocks: Array<{ id: string; label: string; startsAt: string; endsAt: string }> } };
 
 describe('apps route: access', () => {
   it('answers 404 for a business outside the pilot, and when the switch is off', async () => {
@@ -104,6 +104,35 @@ describe('apps route: config', () => {
       config({ version: 1, services: [service({ id: svc.id, name: 'Cupping' })] })));
     expect(second.config.version).toBe(2);
     expect((await call('PUT', '/api/apps/bookings/config', ownerA, config({ version: 1, services: [service({ id: svc.id })] }))).status).toBe(409);
+  });
+
+  it('saves the accent and uploads, replaces and removes one validated logo', async () => {
+    const first = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config({ brandColor: '#62A8FF' })));
+    expect(first.config.settings).toMatchObject({ brandColor: '#62a8ff', logoUrl: null });
+    const objects = new Map<string, Uint8Array>();
+    const bucket = {
+      put: vi.fn(async (key: string, value: Uint8Array) => { objects.set(key, value); }),
+      delete: vi.fn(async (key: string) => { objects.delete(key); }),
+    } as unknown as R2Bucket;
+    const brandedEnv = testEnv({ APPS_ENABLED: 'true', APPS_BUSINESS_IDS: `${A},${B}`, SITES_ORIGIN: 'https://sites.test', ARTIFACTS: bucket });
+    const upload = async (bytes: Uint8Array, type = 'image/png') => {
+      const shaped = req('PUT', '/api/apps/bookings/logo', { cookie: ownerA });
+      const headers = new Headers(shaped.request.headers);
+      headers.set('Origin', CORS['Access-Control-Allow-Origin']);
+      headers.set('Content-Type', type);
+      return (await handleApps(new Request(shaped.request, { headers, body: bytes }), brandedEnv, shaped.url, CORS))!;
+    };
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
+    const uploaded = await jsonOf<Saved>(await upload(png));
+    expect(uploaded.config.version).toBe(2);
+    expect(uploaded.config.settings.logoUrl).toMatch(/^https:\/\/sites\.test\/b\/kedai-aisyah\/logo\?v=/);
+    expect(objects.size).toBe(1);
+    expect((await upload(new Uint8Array([1, 2, 3]))).status).toBe(400);
+    expect(objects.size).toBe(1);
+    const removed = await jsonOf<Saved>(await call('DELETE', '/api/apps/bookings/logo', ownerA, undefined, brandedEnv));
+    expect(removed.config.version).toBe(3);
+    expect(removed.config.settings.logoUrl).toBeNull();
+    expect(objects.size).toBe(0);
   });
 
   it('creates, updates and removes manual closures with the rest of the versioned config', async () => {
