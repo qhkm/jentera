@@ -122,6 +122,14 @@ without it, include manual cleanup review in every release while the pool is on.
    identity and tenant credentials. Review leftover unassigned resources
    separately; turning the flag off does not delete them or cancel installation
    already in progress.
+4. Rolling the Worker back past `9e371f8` (Telegram voice notes, 26 Sep)
+   drops voice notes silently. A voice note is queued as ids with its caption,
+   usually empty, as `text`, and an older Worker's `validTelegramIntake`
+   requires non-empty text, so it acks the intake as `missing` with no reply.
+   Anything queued before the rollback is lost, and new voice notes get the
+   old "can't listen yet" reply only once the older webhook is live too — they
+   deploy together, so that is at once. If a rollback that far is needed, tell
+   owners to resend voice notes sent in the few minutes around it.
 
 ## Rules learned the hard way
 
