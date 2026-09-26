@@ -308,6 +308,33 @@
   font-size: 10px;
   white-space: nowrap;
 }
+.ask-voice-button.is-recording {
+  color: var(--color-red-400);
+}
+
+.ask-voice-button.is-recording > svg {
+  animation: ask-voice-pulse 1.2s ease-in-out infinite;
+}
+
+.ask-voice-spinner {
+  animation: ask-voice-spin 0.9s linear infinite;
+}
+
+@keyframes ask-voice-pulse {
+  50% { opacity: 0.35; }
+}
+
+@keyframes ask-voice-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-voice-button.is-recording > svg,
+  .ask-voice-spinner {
+    animation: none;
+  }
+}
+
 .ask-attach-button:hover {
   background: var(--workspace-control-hover);
   color: var(--text);

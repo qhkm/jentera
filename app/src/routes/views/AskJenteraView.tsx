@@ -34,6 +34,7 @@ import { BotAvatar } from '@/components/BotAvatar';
 import { ChatHistory } from '@/components/ChatHistory';
 import { ChatWorkspace, type ChatBot } from '@/components/ChatWorkspace';
 import { AskReply } from '@/components/AskReply';
+import { VoiceRecordButton } from '@/components/VoiceRecordButton';
 import BusinessBrowser from './BusinessBrowser';
 import BotCreatorDialog from './BotCreatorDialog';
 import { useTeamEnabled, useSignedIn } from '@/lib/repo/gate';
@@ -665,6 +666,13 @@ export default function AskJenteraView({
                   <Paperclip size={15} aria-hidden="true" />
                   <span>{t(attachment ? 'ask.toolbar.replace' : 'ask.toolbar.attach')}</span>
                 </button>
+                {signedIn && <VoiceRecordButton
+                  disabled={busy}
+                  onText={(text) => {
+                    setDraft(draft.trim() ? `${draft.trimEnd()} ${text}` : text);
+                    composer.current?.focus();
+                  }}
+                />}
                 {signedIn && <>
                   <button
                     ref={skillButton}

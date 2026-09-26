@@ -573,3 +573,36 @@ describe('usable replies', () => {
     expect(screen.getByRole('button', { name: 'Copy reply' })).toBeInTheDocument();
   });
 });
+
+/* The mic puts words in the message box; the owner checks them and sends. */
+describe('a voice message in the composer', () => {
+  it('adds the words to what is already typed, and sends nothing by itself', async () => {
+    const user = userEvent.setup();
+    class FakeRecorder {
+      static isTypeSupported = (type: string) => type === 'audio/webm;codecs=opus';
+      mimeType = 'audio/webm;codecs=opus';
+      state = 'inactive';
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['v'], { type: this.mimeType }) }); this.onstop?.(); }
+    }
+    vi.stubGlobal('MediaRecorder', FakeRecorder);
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop() {} }] })) }, configurable: true,
+    });
+    const repo = Object.assign(new LocalRepository(), { transcribe: vi.fn(async () => 'semak stok minyak esok') });
+    const ask = vi.spyOn(repo, 'ask');
+    try {
+      await mount(<Harness />, repo);
+      const input = await screen.findByRole('textbox');
+      await user.type(input, 'Boss,');
+      await user.click(screen.getByRole('button', { name: 'Record a voice message' }));
+      await user.click(await screen.findByRole('button', { name: 'Stop recording' }));
+      await waitFor(() => expect(input).toHaveValue('Boss, semak stok minyak esok'));
+      expect(ask).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

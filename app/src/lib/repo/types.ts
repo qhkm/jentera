@@ -508,6 +508,9 @@ export interface Repository {
   routines?: import('@/lib/routines/types').RoutinesApi;
   /** Remote only; callers must also require /api/me apps discovery. */
   apps?: import('@/lib/apps/types').AppsApi;
+  /** A composer recording as text, for the owner to check before sending.
+      Absent in the demo, so the mic is not offered there. */
+  transcribe?(audio: Blob): Promise<string>;
   load(): Promise<BusinessSnapshot>;
   /** Read-only, remote-only support invitation; server checks verified paid access. */
   founderGroup?(): Promise<{ url: string } | null>;

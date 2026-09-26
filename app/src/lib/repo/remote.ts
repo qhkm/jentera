@@ -9,6 +9,7 @@
    ============================================================ */
 
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
+import { VoiceUnintelligible } from '@/lib/voice';
 import { isRunId } from '@/lib/task';
 import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
@@ -811,6 +812,22 @@ export class RemoteRepository implements Repository {
     post('/api/runs/quality', { workId, quality });
 
   reset = () => post('/api/state/reset');
+
+  transcribe = async (audio: Blob): Promise<string> => {
+    const res = await fetch(`${BASE}/api/voice/transcribe`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': audio.type || 'audio/webm' },
+      body: audio,
+    });
+    if (res.status === 401) throw new NotSignedInError();
+    const body = await res.json().catch(() => null) as { ok?: boolean; text?: unknown; code?: string; err?: string } | null;
+    if (res.status === 422 && body?.code === 'UNINTELLIGIBLE') throw new VoiceUnintelligible();
+    if (!res.ok || !body?.ok || typeof body.text !== 'string') {
+      throw new Error(body?.err ?? 'Could not transcribe that just now.');
+    }
+    return body.text;
+  };
 }
 
 async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void, deadline = Date.now() + 16 * 60 * 1_000, onPending?: () => void): Promise<AskAnswer> {
