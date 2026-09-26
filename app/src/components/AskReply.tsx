@@ -45,6 +45,7 @@ function StepsList({ steps, live, since }: { steps: string[]; live: boolean; sin
                 ? <span className="ask-step-dot" aria-hidden="true" />
                 : <Check size={13} aria-hidden="true" className="ask-step-done" />}
               <div className="ask-step-content">
+                {entry.agent && <span className="ask-step-agent">{entry.agent}</span>}
                 <span className="ask-step-label">{entry.label}</span>
                 {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
                 {(entry.count > 1 || current) && <div className="ask-step-meta">

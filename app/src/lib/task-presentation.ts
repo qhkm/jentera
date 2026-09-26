@@ -28,6 +28,17 @@ export interface StepEntry {
   subject?: string;
   /** How many consecutive steps this line stands for. */
   count: number;
+  /** The specialist who took this step, when it was not the lead role. */
+  agent?: string;
+}
+
+/* The worker tags a specialist's step as `⟦Name⟧ <tool line>`
+   (worker/src/handoff.ts agentStep); everything else is the lead role's. */
+const AGENT_STEP = /^⟦([^⟦⟧\r\n]{1,60})⟧ ([\s\S]*)$/;
+
+export function splitAgentStep(step: string): { agent?: string; step: string } {
+  const match = AGENT_STEP.exec(step);
+  return match ? { agent: match[1], step: match[2] } : { step };
 }
 
 /** Only explicit progress events may supply a label. Reject technical/private
@@ -42,7 +53,7 @@ export function safeTaskProgressLabel(value: unknown): string | undefined {
 
 type Kind =
   | 'search' | 'read' | 'image' | 'process' | 'computer' | 'schedule'
-  | 'memory' | 'create' | 'delegate' | 'file' | 'context' | 'work' | 'research' | 'inspect' | 'command' | 'code';
+  | 'memory' | 'create' | 'delegate' | 'handoff' | 'file' | 'context' | 'work' | 'research' | 'inspect' | 'command' | 'code';
 
 const LABELS: Record<Kind, { en: string; bm: string }> = {
   search: { en: 'Searching for information', bm: 'Mencari maklumat' },
@@ -55,7 +66,8 @@ const LABELS: Record<Kind, { en: string; bm: string }> = {
   schedule: { en: 'Setting a schedule', bm: 'Menetapkan jadual' },
   memory: { en: 'Noting something down', bm: 'Mencatat sesuatu' },
   create: { en: 'Creating an image', bm: 'Mencipta imej' },
-  delegate: { en: 'Handing part of the task to a specialist', bm: 'Menyerahkan sebahagian tugasan kepada pakar' },
+  delegate: { en: 'Getting a helper to work on part of the task', bm: 'Meminta pembantu menguruskan sebahagian tugasan' },
+  handoff: { en: 'Asking a specialist for help', bm: 'Meminta bantuan pakar' },
   file: { en: 'Working on a file', bm: 'Mengusahakan fail' },
   context: { en: 'Preparing conversation context', bm: 'Menyediakan konteks perbualan' },
   work: { en: 'Continuing the task', bm: 'Meneruskan tugasan' },
@@ -146,6 +158,7 @@ function classify(step: string): { kind: Kind; subject?: string } {
   if (tool === 'memory') return { kind: 'memory' };
   if (tool === 'image_generate' || tool.startsWith('bfl_')) return { kind: 'create' };
   if (tool === 'delegate_task') return { kind: 'delegate' };
+  if (tool === 'ask_specialist') return { kind: 'handoff' };
   if (/^(?:write_file|patch)$/.test(tool)) return { kind: 'file', subject: fileNameOf(preview) };
   return { kind: 'computer' };
 }
@@ -159,7 +172,8 @@ export function presentTaskSteps(
 ): StepEntry[] {
   const entries: (StepEntry & { subjects: string[] })[] = [];
   let researching = false;
-  for (const step of steps) {
+  for (const raw of steps) {
+    const { agent, step } = splitAgentStep(raw);
     let { kind, subject } = classify(step);
     // Infer only the broad ongoing activity from observed tools, never quote
     // narration or invent a phase such as comparing/preparing recommendations.
@@ -168,17 +182,18 @@ export function presentTaskSteps(
     else if (kind !== 'research' && kind !== 'work' && kind !== 'process') researching = false;
     const label = LABELS[kind][lang];
     const last = entries.at(-1);
-    if (!options.advanced && last && last.label === label) {
+    if (!options.advanced && last && last.label === label && last.agent === agent) {
       last.count += 1;
       if (subject && !last.subjects.includes(subject) && last.subjects.length < MAX_SUBJECTS) last.subjects.push(subject);
       continue;
     }
-    entries.push({ label, count: 1, subjects: subject ? [subject] : [] });
+    entries.push({ label, count: 1, subjects: subject ? [subject] : [], ...(agent ? { agent } : {}) });
   }
-  return entries.map(({ label, count, subjects }) => ({
+  return entries.map(({ label, count, subjects, agent }) => ({
     label,
     subject: subjects.length ? subjects.join(', ') : undefined,
     count,
+    ...(agent ? { agent } : {}),
   }));
 }
 

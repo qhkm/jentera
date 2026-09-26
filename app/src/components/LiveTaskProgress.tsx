@@ -32,6 +32,7 @@ function ActivityRow({ entry, bm }: { entry: StepEntry; bm: boolean }) {
     <Icon size={15} className="ask-activity-icon" aria-hidden="true" />
     <div className="ask-step-content">
       <div className="ask-activity-heading">
+        {entry.agent && <span className="ask-step-agent">{entry.agent}</span>}
         <span className="ask-step-label">{entry.label}</span>
         {entry.count > 1 && <span className="ask-activity-count" aria-label={`${entry.count} ${bm ? 'langkah' : 'steps'}`}>×{entry.count}</span>}
       </div>
@@ -73,7 +74,7 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, c
   const currentLabel = disconnected
     ? connectionLabel || (bm ? 'Menyambung semula… Menyemak status tugasan.' : 'Reconnecting… Checking task status.')
     : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update')
-    : safeTaskProgressLabel(taskLabel) || latest?.label || label || (bm ? 'Menjalankan tugasan' : 'Working on your task');
+    : safeTaskProgressLabel(taskLabel) || (latest ? (latest.agent ? `${latest.agent} · ${latest.label}` : latest.label) : undefined) || label || (bm ? 'Menjalankan tugasan' : 'Working on your task');
   return <div className="min-w-0">
     {!latest ? <div className="ask-live-current">
       <TypingBubble label={currentLabel} since={since} active={active} />

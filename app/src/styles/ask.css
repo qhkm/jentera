@@ -496,6 +496,8 @@ button.ask-context-link:hover {
 @media (max-width: 520px) {
   .computer-preview-live-header { align-items: flex-start; flex-direction: column; }
 }
+/* Which specialist took a step (docs/plans/2026-09-26-specialist-handoff.md). */
+.ask-step-agent { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); font-size: 11px; line-height: 18px; white-space: nowrap; }
 .ask-writing-hint.ask-ai-disclaimer {
   color: var(--text-secondary);
   font-size: 11px;

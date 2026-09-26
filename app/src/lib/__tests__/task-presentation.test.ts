@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayWorkspacePaths, presentTaskSteps, safeTaskProgressLabel, stepTail } from '@/lib/task-presentation';
+import { displayWorkspacePaths, presentTaskSteps, safeTaskProgressLabel, splitAgentStep, stepTail } from '@/lib/task-presentation';
 
 it('accepts bounded public task labels but rejects technical details and outcome claims', () => {
   expect(safeTaskProgressLabel('Comparing the documented options')).toBe('Comparing the documented options');
@@ -143,6 +143,32 @@ describe('the steps under a reply', () => {
   it('speaks Malay too', () => {
     expect(presentTaskSteps(['💻 terminal: "git"', '🔍 web_search: "kopi"'], 'bm', { advanced: false }).map((e) => e.label))
       .toEqual(['Menjalankan arahan', 'Mencari maklumat']);
+  });
+});
+
+describe('steps a specialist took', () => {
+  it('tags each line with the specialist and never folds two people into one line', () => {
+    expect(presentTaskSteps([
+      '💻 terminal: "git"',
+      '⟦Finance and records⟧ 💻 terminal: "git"',
+      '⟦Finance and records⟧ 💻 terminal: "python3"',
+    ], 'en', { advanced: false })).toEqual([
+      { label: 'Running a command', subject: 'git', count: 1 },
+      { label: 'Running a command', subject: 'git, python3', count: 2, agent: 'Finance and records' },
+    ]);
+  });
+
+  it('calls Hermes’s own helper a helper, and a hand-off a request for help', () => {
+    expect(presentTaskSteps(['👥 delegate_task...'], 'en', { advanced: false })[0].label)
+      .toBe('Getting a helper to work on part of the task');
+    expect(presentTaskSteps(['🤝 ask_specialist...'], 'bm', { advanced: false })[0].label)
+      .toBe('Meminta bantuan pakar');
+  });
+
+  it('reads a plain step unchanged', () => {
+    expect(splitAgentStep('💻 terminal: "git"')).toEqual({ step: '💻 terminal: "git"' });
+    expect(splitAgentStep('⟦Growth and marketing⟧ 🔍 web_search: "x"'))
+      .toEqual({ agent: 'Growth and marketing', step: '🔍 web_search: "x"' });
   });
 });
 
