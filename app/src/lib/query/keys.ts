@@ -20,6 +20,9 @@ export const keys = {
   goals: (businessId: string) => ['biz', businessId, 'goals'] as const,
   activity: (businessId: string) => ['biz', businessId, 'activity'] as const,
   connections: (businessId: string) => ['biz', businessId, 'connections'] as const,
+  routines: (businessId: string) => ['biz', businessId, 'routines'] as const,
+  /** One routine and the first page of its run history. */
+  routine: (businessId: string, routineId: string) => ['biz', businessId, 'routine', routineId] as const,
 };
 
 /** Mutation keys live apart from query keys, scoped the same way. */

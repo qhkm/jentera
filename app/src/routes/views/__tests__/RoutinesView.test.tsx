@@ -10,10 +10,11 @@ import { RoutineError } from '@/lib/routines/api';
 import type { Routine, RoutineAction, RoutineList, RoutineWriteResult, RoutinesApi } from '@/lib/routines/types';
 import { ROUTINE_ID, RUN_ID, historyFixture, listFixture, occurrenceFixture, routineFixture } from '@/lib/routines/__tests__/fixtures';
 import RoutinesView from '../RoutinesView';
+import { TestQueryScope } from '@/test-support/query';
 import { AUTOMATION_PLAYBOOKS, playbookConfig } from '@/lib/routines/playbooks';
 
 beforeEach(() => localStorage.clear());
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 function fixture(initial: Routine[] = []) {
   let list = listFixture(initial);
@@ -60,7 +61,7 @@ async function mount(api: RoutinesApi, selected: string | null = null, lang: 'en
     return <><button onClick={() => setActive(!active)}>Switch mode</button><output data-testid="mode">{active ? 'routines' : 'chat'}</output>
       <div hidden={!active}><RoutinesView api={api} active={active} selectedId={id} onSelect={setId} onOpenTask={openTask} /></div></>;
   }
-  render(<MemoryRouter><RepositoryProvider repository={repo}><I18nProvider><Harness /></I18nProvider></RepositoryProvider></MemoryRouter>);
+  render(<MemoryRouter><TestQueryScope><RepositoryProvider repository={repo}><I18nProvider><Harness /></I18nProvider></RepositoryProvider></TestQueryScope></MemoryRouter>);
   await screen.findByRole('heading', { name: lang === 'en' ? 'Routines' : 'Rutin' });
   return { user: userEvent.setup(), openTask };
 }
@@ -83,10 +84,10 @@ describe('routine creation and confirmation', () => {
   it('accepts a library draft after capability loading and keeps it paused', async () => {
     const { api } = fixture();
     const consumed = vi.fn();
-    render(<MemoryRouter><RepositoryProvider repository={new LocalRepository()}><I18nProvider>
+    render(<MemoryRouter><TestQueryScope><RepositoryProvider repository={new LocalRepository()}><I18nProvider>
       <RoutinesView api={api} active selectedId={null} onSelect={vi.fn()} onOpenTask={vi.fn()}
         playbookDraft={playbookConfig(AUTOMATION_PLAYBOOKS[0], '')} onDraftConsumed={consumed} />
-    </I18nProvider></RepositoryProvider></MemoryRouter>);
+    </I18nProvider></RepositoryProvider></TestQueryScope></MemoryRouter>);
     expect(await screen.findByDisplayValue('Daily business brief')).toBeVisible();
     expect(screen.getByRole('checkbox')).toBeChecked();
     expect(consumed).toHaveBeenCalledTimes(1);
@@ -274,5 +275,45 @@ describe('permissions, history and failures', () => {
     await screen.findByText(/mencapai had 1 rutin/);
     expect(screen.queryByRole('button', { name: 'Tambah rutin' })).not.toBeInTheDocument();
     expect(screen.getByText(/Waktu Malaysia/)).toBeInTheDocument();
+  });
+});
+
+describe('reading routines through the cache', () => {
+  it('shows the routines again on a return to Routines inside 30 s without asking', async () => {
+    const { api } = fixture([routineFixture()]);
+    const { user } = await mount(api);
+    await screen.findByRole('button', { name: /Open.*Morning business summary/i });
+    await user.click(screen.getByRole('button', { name: 'Switch mode' }));
+    await user.click(screen.getByRole('button', { name: 'Switch mode' }));
+    expect(screen.getByRole('button', { name: /Open.*Morning business summary/i })).toBeVisible();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(api.list).toHaveBeenCalledTimes(1);
+  });
+
+  /* A failed read used to hide the list behind its error; the routines
+     were still true a moment before, so they stay, read-only, with the
+     error and its Refresh above them. */
+  it('keeps the list on screen when reading it again fails, with the error above it', async () => {
+    const { api } = fixture([routineFixture()]);
+    const { user } = await mount(api);
+    await screen.findByRole('button', { name: /Open.*Morning business summary/i });
+    api.list.mockRejectedValueOnce(new RoutineError('REQUEST_FAILED', 503));
+    await user.click(screen.getByRole('button', { name: 'Refresh routines' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load routines.');
+    expect(screen.getByRole('button', { name: /Open.*Morning business summary/i })).toBeVisible();
+  });
+
+  it('checks every 10 s while a run is queued and Routines is open, and not once it is closed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { api } = fixture([routineFixture({ lastOccurrence: occurrenceFixture({ status: 'queued', finishedAt: null }) })]);
+    const { user } = await mount(api);
+    await screen.findByRole('button', { name: /Open.*Morning business summary/i });
+    const first = api.list.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(api.list.mock.calls.length).toBe(first + 1);
+    await user.click(screen.getByRole('button', { name: 'Switch mode' }));
+    const closed = api.list.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(api.list.mock.calls.length).toBe(closed);
   });
 });

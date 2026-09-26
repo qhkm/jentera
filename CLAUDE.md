@@ -161,8 +161,16 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   app is on screen (it ran in the background for as long as a bot stayed
   unpaired). `setRows` stops any read in flight before it writes, so an
   answer that began before a connect cannot land after it and take it
-  back. Routines and shared chats still fetch by hand until phase 2
-  reaches them.
+  back. Routines joined last (`hooks/useRoutines.ts`, keys
+  `['biz', id, 'routines']` and `['biz', id, 'routine', routineId]`, the
+  latter holding the routine and its first page of history, which "Load
+  earlier runs" appends to): a return to Routines inside 30 s asks for
+  nothing, the 10 s check runs only while a run is under way and Routines
+  is open and on screen, and a failed read keeps the list, read-only, under
+  its error. `refresh()` still resolves only once both reads have landed —
+  the save and reconcile flows in `RoutinesView` wait on it — and reads are
+  not retried, as before. Shared chats still fetch by hand; they load only
+  on the team plan.
 
 ## Native shell (`mobile/`)
 

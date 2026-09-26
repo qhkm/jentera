@@ -319,7 +319,7 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
       })}</div>}
     </section>}
 
-    {!library && !editor && !adding && state.data && !state.error && <>
+    {!library && !editor && !adding && state.data && <>
       {!selectedId && <div className="routine-list" aria-busy={state.loading}>
         {state.data.routines.map((routine) => {
           const Icon = JOB_ICONS[routine.task.kind];
