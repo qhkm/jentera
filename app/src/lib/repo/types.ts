@@ -326,6 +326,7 @@ export interface BrowserInputTarget {
 export interface RunHandoff {
   id: number;
   specialist: string;
+  /** Empty when the business's roster does not name this key. */
   name: string;
   depth: number;
   outcome: 'working' | 'finished' | 'failed' | 'refused';

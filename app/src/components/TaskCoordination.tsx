@@ -70,7 +70,11 @@ export function TaskCoordination({ runId, live = false }: { runId: string; live?
   if (!error && (!data || (!data.assignment && !data.events.length && !data.handoffs?.length))) return null;
   const role = data?.assignment?.kind === 'coordinator' ? t('handoff.coordinator')
     : data?.assignment?.role || t('handoff.specialist');
-  const names = [...new Set((data?.handoffs ?? []).map((handoff) => handoff.name))];
+  const nameOf = (name: string) => name || t('handoff.someone');
+  /* Who worked on it: a specialist the runner refused never did. The
+     popover still lists the refusal. */
+  const names = [...new Set((data?.handoffs ?? [])
+    .filter((handoff) => handoff.outcome !== 'refused').map((handoff) => nameOf(handoff.name)))];
   const label = names.length ? t('handoff.with', { role, names: names.join(', ') }) : role;
   const CODES = new Set(['unavailable', 'unknown_specialist', 'loop', 'limit_depth', 'limit_count', 'time', 'budget', 'failed', 'stopped']);
   const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -90,7 +94,7 @@ export function TaskCoordination({ runId, live = false }: { runId: string; live?
       {data.handoffs?.length ? <ol className="task-coordination-handoffs" aria-label={t('handoff.specialists')}>
         {data.handoffs.map((handoff) => <li key={handoff.id}>
           <div className="task-coordination-handoff">
-            <strong>{handoff.name}</strong>
+            <strong>{nameOf(handoff.name)}</strong>
             <span>{t(`handoff.outcome.${handoff.outcome}`)}</span>
             {handoff.code && CODES.has(handoff.code) && <span>{t(`handoff.code.${handoff.code}`)}</span>}
             <time dateTime={handoff.at}>{clock(handoff.at)}</time>

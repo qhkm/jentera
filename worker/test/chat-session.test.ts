@@ -193,6 +193,8 @@ describe('a chat and who may read its runs', () => {
   it('reports each specialist hand-off with its outcome and the steps it took', async () => {
     const runId = await finishedRun(owner, null);
     await asTenant(A, async (tx) => {
+      await tx`insert into specialist_profile (business_id, profile_key, name, description)
+               values (${A}, 'records', 'Finance and records', 'Invoices and cash flow')`;
       await append(tx, A, runId, 'agent.handoff', { stage: 'requested', specialist: 'records', depth: 1 });
       await append(tx, A, runId, 'agent.handoff', { stage: 'started', specialist: 'records', depth: 1 });
       await append(tx, A, runId, 'agent.tool', {
@@ -203,9 +205,11 @@ describe('a chat and who may read its runs', () => {
     });
     const data = await asTenant(A, (tx) => runCoordination(tx, A, runId));
     expect(data.handoffs).toEqual([
-      expect.objectContaining({ specialist: 'records', name: 'records', depth: 1, outcome: 'finished',
+      expect.objectContaining({ specialist: 'records', name: 'Finance and records', depth: 1, outcome: 'finished',
         steps: ['⟦Finance and records⟧ ⚙️ business_records: "invoices"'] }),
-      expect.objectContaining({ specialist: 'growth', outcome: 'refused', code: 'limit_count', steps: [] }),
+      /* Nobody on the roster: no name, so the app says "a specialist"
+         rather than showing the raw key. */
+      expect.objectContaining({ specialist: 'growth', name: '', outcome: 'refused', code: 'limit_count', steps: [] }),
     ]);
     expect(await asTenant(P1, (tx) => runCoordination(tx, A, runId))).toEqual({ assignment: null, events: [] });
   });

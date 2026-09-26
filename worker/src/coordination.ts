@@ -20,6 +20,8 @@ export async function recordDelegation(tx: postgres.TransactionSql, businessId: 
 export interface RunHandoff {
   id: number;
   specialist: string;
+  /** The business's name for this specialist; empty for a key the roster
+      does not have, which the app shows as "a specialist", never raw. */
   name: string;
   depth: number;
   outcome: 'working' | 'finished' | 'failed' | 'refused';
@@ -38,7 +40,7 @@ function handoffsOf(rows: HandoffRow[], steps: StepRow[]): RunHandoff[] {
   for (const row of rows) {
     if (row.stage === 'requested') {
       out.push({
-        id: row.seq, specialist: row.specialist, name: (row.name ?? row.specialist).slice(0, 60),
+        id: row.seq, specialist: row.specialist, name: (row.name ?? '').slice(0, 60),
         depth: row.depth ?? 1, outcome: 'working', at: row.created_at.toISOString(), steps: [],
         openSeq: row.seq, endSeq: null,
       });

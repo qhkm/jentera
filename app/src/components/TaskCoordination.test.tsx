@@ -68,13 +68,21 @@ describe('recorded role activity', () => {
           at: '2026-09-26T01:00:00Z', steps: ['⟦Finance and records⟧ ⚙️ business_records: "invoices"'] },
         { id: 9, specialist: 'growth', name: 'Growth and marketing', depth: 1, outcome: 'refused', code: 'limit_count',
           at: '2026-09-26T01:01:00Z', steps: [] },
+        { id: 11, specialist: 'finance', name: '', depth: 1, outcome: 'refused', code: 'unknown_specialist',
+          at: '2026-09-26T01:02:00Z', steps: [] },
       ],
     } satisfies RunCoordination));
     const chip = await screen.findByRole('button', { name: /Who’s working on this/ });
-    expect(chip).toHaveTextContent('Chief of Staff + Finance and records, Growth and marketing');
+    /* Only who actually worked: a refused specialist never did. */
+    expect(chip).toHaveTextContent(/^Chief of Staff \+ Finance and records$/);
     await userEvent.click(chip);
     expect(screen.getByText('Finance and records')).toBeInTheDocument();
     expect(screen.getByText('Finished their part')).toBeInTheDocument();
+    /* The popover still says who was not handed anything, and why. */
+    expect(screen.getByText('Growth and marketing')).toBeInTheDocument();
     expect(screen.getByText(/five hand-offs already used/)).toBeInTheDocument();
+    /* A key the roster does not know is never shown raw. */
+    expect(screen.getByText('A specialist')).toBeInTheDocument();
+    expect(screen.queryByText('finance')).toBeNull();
   });
 });
