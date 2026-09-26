@@ -114,7 +114,7 @@ describe('sites: pages', () => {
     const page = await get('/b/seido', branded);
     const html = await page.text();
     expect(html).toContain(':root{--accent:#62a8ff;--focus:#62a8ff;--accent-ink:#080808}');
-    expect(html).toContain('<img src="/b/seido/logo" alt="" width="64" height="64">');
+    expect(html).toContain('<img src="/b/seido/logo?v=');
     const logo = await get('/b/seido/logo', branded);
     expect(logo.status).toBe(200);
     expect(logo.headers.get('Content-Type')).toBe('image/png');

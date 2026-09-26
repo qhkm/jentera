@@ -25,7 +25,7 @@ export interface PublicPage {
   lang: Lang;
   /** Taking new requests: the installation is active and the owner has not paused it. */
   open: boolean;
-  settings: { minNoticeMinutes: number; horizonDays: number; location: string | null; brandColor: string; hasLogo: boolean };
+  settings: { minNoticeMinutes: number; horizonDays: number; location: string | null; brandColor: string; logoVersion: string | null };
   services: PublicService[];
 }
 
@@ -41,8 +41,9 @@ export async function readPublicPage(tx: postgres.TransactionSql, businessId: st
   const [business] = await tx<{ name: string; lang: Lang }[]>`select name, lang from business where id = ${businessId}`;
   const [installed] = await tx<{ state: 'active' | 'paused' }[]>`
     select state from app_installation where business_id = ${businessId} and app_key = 'bookings'`;
-  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; brand_color: string; logo_key: string | null }[]>`
-    select accepting, min_notice_minutes, horizon_days, location, brand_color, logo_key from booking_settings where business_id = ${businessId}`;
+  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; brand_color: string; logo_key: string | null; logo_updated_at: Date | null }[]>`
+    select accepting, min_notice_minutes, horizon_days, location, brand_color, logo_key, logo_updated_at
+      from booking_settings where business_id = ${businessId}`;
   if (!business || !installed || !settings) return null;
   // duration_minutes > 0 guards openSlots, whose loop would never end on zero.
   const services = await tx<{ id: string; name: string; description: string | null; duration_minutes: number; capacity: number; price_label: string | null }[]>`
@@ -56,7 +57,8 @@ export async function readPublicPage(tx: postgres.TransactionSql, businessId: st
     open: installed.state === 'active' && settings.accepting,
     settings: {
       minNoticeMinutes: settings.min_notice_minutes, horizonDays: settings.horizon_days, location: settings.location,
-      brandColor: settings.brand_color, hasLogo: settings.logo_key !== null,
+      brandColor: settings.brand_color,
+      logoVersion: settings.logo_key && settings.logo_updated_at ? settings.logo_updated_at.toISOString() : null,
     },
     services: services.map((s) => ({
       id: s.id, name: s.name, description: s.description, durationMinutes: s.duration_minutes, capacity: s.capacity, priceLabel: s.price_label,

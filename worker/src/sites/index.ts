@@ -153,7 +153,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const lang = langOf(url, info);
   const base = {
     slug, lang, businessName: info.businessName, location: info.settings.location, brandColor: info.settings.brandColor,
-    logoUrl: info.settings.hasLogo ? `/b/${slug}/logo` : null,
+    logoUrl: info.settings.logoVersion ? `/b/${slug}/logo?v=${encodeURIComponent(info.settings.logoVersion)}` : null,
   };
 
   const manageMatch = sub.match(/^\/manage\/([A-Za-z0-9_-]{43})(?:\/(cancel|reschedule|calendar\.ics))?$/);
