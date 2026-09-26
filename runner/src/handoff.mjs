@@ -119,6 +119,9 @@ function pause(ms, signal) {
   });
 }
 
+/** Safe relay kinds: everything else `translate` might return stays off the stream. */
+const RELAYED_TYPES = new Set(['tool.started', 'tool.completed', 'approval']);
+
 export class HandoffEngine {
   constructor(deps) {
     this.deps = { now: () => Date.now(), ...deps };
@@ -131,6 +134,9 @@ export class HandoffEngine {
     this.tasks.clear();
     this.runs.clear();
     if (!handoff) return;
+    /* The task's own controller: stopping the task aborts this, which cascades
+       into every live run's combined signal below it, whatever its depth. */
+    const controller = new AbortController();
     this.tasks.set(taskId, {
       taskId,
       deadlineAt,
@@ -140,10 +146,14 @@ export class HandoffEngine {
       preamble: handoff.preamble,
       used: 0,
       usage: null,
-      active: null,
+      liveRuns: new Map(),
       stopped: false,
+      controller,
     });
-    this.runs.set(rootRunId, { taskId, depth: 0, chain: [rootProfile ?? 'default'], queue: Promise.resolve() });
+    this.runs.set(rootRunId, {
+      taskId, depth: 0, chain: [rootProfile ?? 'default'], queue: Promise.resolve(),
+      signal: controller.signal, deadline: deadlineAt,
+    });
   }
 
   /** Tokens the task's specialists used, to add to its own. */
@@ -151,16 +161,17 @@ export class HandoffEngine {
     return this.tasks.get(taskId)?.usage ?? null;
   }
 
-  /** Stop the specialist working for this task, and refuse any that would follow. */
+  /** Stop every specialist working for this task, and refuse any that would follow. */
   async stopTask(taskId) {
     const task = this.tasks.get(taskId);
     if (!task) return;
     task.stopped = true;
-    const active = task.active;
-    if (!active) return;
-    active.abort.abort();
-    await this.deps.hermes(`/v1/runs/${encodeURIComponent(active.runId)}/stop`, { method: 'POST' }, active.profile)
-      .catch(() => undefined);
+    /* Ask every run this task currently knows about directly, rather than
+       trusting the cascade alone: a run's own listener is memoised, so this
+       and the cascade below never send the same stop twice. */
+    const stops = [...task.liveRuns.values()].map((run) => run.stopOnce());
+    task.controller.abort();
+    await Promise.allSettled(stops);
   }
 
   /** One request from a caller's tool; resolves to what the tool receives. */
@@ -172,9 +183,10 @@ export class HandoffEngine {
     }
     /* One at a time. A caller waits inside its own tool call, so a queue per
        caller is enough; a queue per task would deadlock the second level,
-       where a specialist asks for help while its own caller waits on it. */
+       where a specialist asks for help while its own caller waits on it.
+       A turn that rejects must not poison the queue for the next one. */
     const turn = caller.queue.then(() => this.handOff(task, caller, specialist, brief.trim()));
-    caller.queue = turn.catch(() => undefined);
+    caller.queue = turn.then(() => undefined, () => undefined);
     return turn;
   }
 
@@ -198,7 +210,9 @@ export class HandoffEngine {
     if (task.stopped) return refuse('stopped');
     const refusal = handoffRefusal({ caller, specialist: key, roster, used: task.used, limits: task.limits });
     if (refusal) return refuse(refusal);
-    const budgetMs = handoffBudgetMs(task.deadlineAt, this.deps.now());
+    /* A hand-off gets only what its own caller has left, not the whole task's
+       remaining time — so a grandchild can never outlive its parent. */
+    const budgetMs = handoffBudgetMs(caller.deadline, this.deps.now());
     if (budgetMs < HANDOFF_MIN_MS) return refuse('time');
     task.used += 1;
 
@@ -213,77 +227,103 @@ export class HandoffEngine {
       }),
     }, key).catch(() => null);
     const body = started?.ok ? await started.json().catch(() => null) : null;
-    if (typeof body?.run_id !== 'string') return fail('failed');
+    /* Even a failed start is a stopped task's business first: the caller
+       already knows why nothing is happening for it. */
+    if (typeof body?.run_id !== 'string') return task.stopped ? fail('stopped') : fail('failed');
 
     const runId = body.run_id;
-    const abort = new AbortController();
-    this.runs.set(runId, { taskId: task.taskId, depth, chain: [...caller.chain, key], queue: Promise.resolve() });
-    task.active = { runId, profile: key, abort };
+    /* This run's own budget timer, combined with whatever would already stop
+       its caller: either aborting unblocks the stream read below and stops
+       Hermes exactly once, whichever fired. */
+    const own = new AbortController();
+    const signal = AbortSignal.any([caller.signal, own.signal]);
+    const deadline = this.deps.now() + budgetMs;
+    this.runs.set(runId, { taskId: task.taskId, depth, chain: [...caller.chain, key], queue: Promise.resolve(), signal, deadline });
+
+    let stopping = null;
+    const stopOnce = () => {
+      if (!stopping) {
+        stopping = this.deps.hermes(`/v1/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' }, key)
+          .catch(() => undefined);
+      }
+      return stopping;
+    };
+    task.liveRuns.set(runId, { profile: key, stopOnce });
+    const onAbort = () => { void stopOnce(); };
+    signal.addEventListener('abort', onAbort, { once: true });
     mark('started');
-    const stopRun = () => this.deps.hermes(`/v1/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' }, key)
-      .catch(() => undefined);
     /* A stop that landed between the start and this line would otherwise
-       find nothing active to stop. */
-    if (task.stopped) {
-      abort.abort();
-      void stopRun();
-    }
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      abort.abort();
-      void stopRun();
-    }, budgetMs);
+       leave nothing listening for it, since the listener above only reacts
+       to what happens next. */
+    if (task.stopped) own.abort();
+    const timer = setTimeout(() => own.abort(), budgetMs);
     try {
-      const outcome = await this.follow(task.taskId, runId, key, abort.signal);
+      const outcome = await this.follow(task.taskId, runId, key, signal);
       if (outcome.usage) task.usage = addUsage(task.usage, outcome.usage);
+      if (task.stopped) return fail('stopped');
+      if (signal.aborted) return fail('time');
       if (outcome.status === 'completed' && typeof outcome.output === 'string' && outcome.output.trim()) {
         mark('finished');
         return { ok: true, specialist: key, name: entry.name, answer: outcome.output.slice(0, HANDOFF_ANSWER_MAX) };
       }
-      return fail(task.stopped ? 'stopped' : timedOut ? 'time'
-        : BUDGET.test(String(outcome.error ?? '')) ? 'budget' : 'failed');
+      return fail(BUDGET.test(String(outcome.error ?? '')) ? 'budget' : 'failed');
     } finally {
       clearTimeout(timer);
-      if (task.active?.runId === runId) task.active = null;
+      /* Detach rather than rely on the combined signal becoming unreachable:
+         a cascade that arrives after this run has already concluded on its
+         own must never send a stray, late stop for it. */
+      signal.removeEventListener('abort', onAbort);
+      task.liveRuns.delete(runId);
       this.runs.delete(runId);
     }
+  }
+
+  /** One direct look at Hermes's own record of a run, if it has reached an end. */
+  async statusOnce(runId, profile) {
+    const response = await this.deps.hermes(`/v1/runs/${encodeURIComponent(runId)}`, {}, profile).catch(() => null);
+    const status = response?.ok ? await response.json().catch(() => null) : null;
+    const state = typeof status?.status === 'string' ? status.status.toLowerCase() : '';
+    return TERMINAL.has(state) ? { status: state, output: status.output, usage: status.usage, error: status.error } : null;
   }
 
   /** Follow a specialist's run to its end, relaying its tools and approvals. */
   async follow(taskId, runId, profile, signal) {
     const target = { runId, profile };
-    try {
-      const response = await this.deps.events(runId, profile, signal);
-      if (response?.ok && response.body) {
-        const decoder = new TextDecoder();
-        let buffer = '';
-        for await (const chunk of response.body) {
-          buffer += decoder.decode(chunk, { stream: true });
-          const frames = buffer.split(/\r?\n\r?\n/);
-          buffer = frames.pop() ?? '';
-          for (const frame of frames) {
-            const event = parseFrame(frame);
-            if (!event) continue;
-            if (event.event === 'run.completed') return { status: 'completed', output: event.output, usage: event.usage };
-            if (event.event === 'run.failed') return { status: 'failed', error: event.error };
-            if (event.event === 'run.cancelled') return { status: 'cancelled', usage: event.usage };
-            const safe = this.deps.translate(event, profile);
-            if (safe) this.deps.emit(taskId, safe, target);
+    if (!signal.aborted) {
+      try {
+        const response = await this.deps.events(runId, profile, signal);
+        if (response?.ok && response.body) {
+          const decoder = new TextDecoder();
+          let buffer = '';
+          for await (const chunk of response.body) {
+            buffer += decoder.decode(chunk, { stream: true });
+            const frames = buffer.split(/\r?\n\r?\n/);
+            buffer = frames.pop() ?? '';
+            for (const frame of frames) {
+              const event = parseFrame(frame);
+              if (!event) continue;
+              if (event.event === 'run.completed') return { status: 'completed', output: event.output, usage: event.usage };
+              if (event.event === 'run.failed') return { status: 'failed', error: event.error, usage: event.usage };
+              if (event.event === 'run.cancelled') return { status: 'cancelled', usage: event.usage };
+              const safe = this.deps.translate(event, profile);
+              if (safe && RELAYED_TYPES.has(safe.type)) this.deps.emit(taskId, { ...safe, agent: profile }, target);
+            }
           }
         }
+      } catch {
+        /* Stream lost or aborted; a direct look at Hermes below settles it,
+           at least once even when the run must not keep going. */
       }
-    } catch {
-      if (signal.aborted) return { status: 'cancelled' };
     }
-    /* The stream ended without a result: ask Hermes directly. */
+    /* No terminal event arrived over the stream. While the run is still
+       meant to continue, ask Hermes directly until one appears; otherwise —
+       stopped, timed out, or the stream simply ended — ask once more so a
+       usage figure Hermes already has is not lost. */
     while (!signal.aborted) {
-      const response = await this.deps.hermes(`/v1/runs/${encodeURIComponent(runId)}`, {}, profile).catch(() => null);
-      const status = response?.ok ? await response.json().catch(() => null) : null;
-      const state = typeof status?.status === 'string' ? status.status.toLowerCase() : '';
-      if (TERMINAL.has(state)) return { status: state, output: status.output, usage: status.usage, error: status.error };
+      const outcome = await this.statusOnce(runId, profile);
+      if (outcome) return outcome;
       await pause(1_000, signal);
     }
-    return { status: 'cancelled' };
+    return (await this.statusOnce(runId, profile)) ?? { status: 'cancelled' };
   }
 }
