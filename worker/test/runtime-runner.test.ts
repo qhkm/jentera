@@ -1785,6 +1785,80 @@ describe('specialists handing off', () => {
     expect(JSON.stringify(trace)).not.toMatch(/brief/);
   });
 
+  it("names specialists from the business's own roster, and says nothing of one that is not on it", async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    await asTenant(A, (tx) => tx`
+      insert into specialist_profile (business_id, profile_key, name, description)
+      values (${A}, 'records', 'Books and bills', 'Invoices and payments')`);
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `live:${run.id}`,
+      payload: {
+        input: 'Are we owed anything?', model: 'MiniMax-M3', responseMode: 'deep',
+        objective: 'Are we owed anything?', function: 'ask', channel: 'app',
+      },
+    }));
+    /* The runner's own name for records differs from what the owner called
+       it, and the model asked for "finance", which is nobody on this team. */
+    const events = [
+      { type: 'handoff', stage: 'requested', specialist: 'finance', depth: 1, seq: 1 },
+      { type: 'handoff', stage: 'refused', specialist: 'finance', depth: 1, code: 'unknown_specialist', seq: 2 },
+      { type: 'handoff', stage: 'started', specialist: 'records', name: 'Finance and records', depth: 1, seq: 3 },
+      { type: 'tool.started', tool: 'business_records', preview: 'invoices', agent: 'records', seq: 4 },
+      { type: 'approval', requestId: 'c'.repeat(32), tool: 'business_records', message: 'Send a reminder', agent: 'records', seq: 5 },
+    ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'live-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        return new Response(events, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: runnerFetch, observationSliceMs: 600 },
+    );
+    const statuses = published.filter((event) => event.type === 'status').map((event) => event.detail);
+    expect(statuses).toContain('🤝 Asking Books and bills…');
+    expect(statuses).toContain('⟦Books and bills⟧ ⚙️ business_records: "invoices"');
+    expect(JSON.stringify(statuses)).not.toMatch(/finance|could not help|Finance and records/);
+    const [row] = await asTenant(A, (tx) => tx<{ approval: { agent?: string } }[]>`
+      select result->'approval' as approval from runtime_task where id = ${task.id}`);
+    expect(row.approval.agent).toBe('Books and bills');
+  });
+
   it('keeps the specialist name on the approval it pauses for', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.09.01-3',

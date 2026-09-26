@@ -118,7 +118,15 @@ import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '..
 import { modelForResponseMode, responseModeFor, withoutModeCommand } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
-import { handoffEnabledFor, handoffTaskField, agentStep, handoffStatus, recordHandoff, specialistNames } from '../handoff';
+import {
+  handoffEnabledFor,
+  handoffTaskField,
+  agentStep,
+  handoffStatus,
+  recordHandoff,
+  SPECIALIST_FALLBACK_NAME,
+  specialistNames,
+} from '../handoff';
 import { recordDelegation } from '../coordination';
 import {
   notifyOwnersApprovalRequested,
@@ -166,20 +174,27 @@ async function recordStartDelay(
   }).catch(() => undefined);
 }
 
-/* A specialist's display name: from the runner's hand-off events, or — when a
-   later slice starts past them — from the business's own roster. */
+/** Specialist names for one slice: the business's roster, read once when
+    first needed, and the names the runner's hand-off events carried. */
+interface AgentNames {
+  roster: Map<string, string> | null;
+  runner: Map<string, string>;
+}
+
+/* A specialist's display name, for step tags, approval titles and the live
+   status. The business's own roster is the authority — the control plane
+   names its specialists, not the runner — and the runner's name is only a
+   fallback for a profile the roster lacks. A key on neither is a name the
+   model made up, and reads as "a specialist", never as the raw key. */
 async function specialistName(
   env: Env,
   businessId: string,
-  cache: Map<string, string>,
+  names: AgentNames,
   profile: string,
 ): Promise<string> {
-  const known = cache.get(profile);
-  if (known) return known;
-  const names = await withTenant(env, businessId, (tx) => specialistNames(tx))
+  names.roster ??= await withTenant(env, businessId, (tx) => specialistNames(tx))
     .catch(() => new Map<string, string>());
-  for (const [key, value] of names) cache.set(key, value);
-  return cache.get(profile) ?? profile;
+  return names.roster.get(profile) ?? names.runner.get(profile) ?? SPECIALIST_FALLBACK_NAME;
 }
 
 const MAX_TASK_ATTEMPTS = 5;
@@ -1581,7 +1596,7 @@ export async function handleRuntimeMessage(
         const web = lease.task.runId
           ? createWebProgress(env, message.businessId, lease.task.runId)
           : null;
-        const agentNames = new Map<string, string>();
+        const agentNames: AgentNames = { roster: null, runner: new Map() };
         /* Typing is cosmetic and the webhook already emitted an immediate
            pulse. Refresh it in parallel so Telegram cannot hold model start
            behind another network round trip. */
@@ -1664,14 +1679,14 @@ export async function handleRuntimeMessage(
               : undefined,
             onHandoff: (liveStream || web)
               ? async (event) => {
-                  if (event.name) agentNames.set(event.specialist, event.name);
-                  const name = event.name ?? await specialistName(env, message.businessId, agentNames, event.specialist);
+                  if (event.name) agentNames.runner.set(event.specialist, event.name);
+                  const name = await specialistName(env, message.businessId, agentNames, event.specialist);
                   if (lease.task.runId) {
                     const handoffRunId = lease.task.runId;
                     await withTenant(env, message.businessId, (tx) =>
                       recordHandoff(tx, message.businessId, handoffRunId, event)).catch(() => undefined);
                   }
-                  const line = handoffStatus(event.stage, name);
+                  const line = handoffStatus(event.stage, name, event.code);
                   if (!line) return;
                   await web?.status(line, 'stage');
                   if (liveStream && !firstVisibleDelta) {

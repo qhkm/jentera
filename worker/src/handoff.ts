@@ -69,8 +69,18 @@ export function agentStep(name: string, detail: string): string {
   return clean ? `⟦${clean}⟧ ${detail}` : detail;
 }
 
-/** The live status line for a hand-off stage, or null when it needs none. */
-export function handoffStatus(stage: RunnerHandoffEvent['stage'], name: string): string | null {
+/** What a specialist the business's roster does not name is called. */
+export const SPECIALIST_FALLBACK_NAME = 'a specialist';
+
+/** The live status line for a hand-off stage, or null when it needs none.
+    A request for someone who is not on the team was never a hand-off the
+    owner needs to hear about: the lead is told, and carries on. */
+export function handoffStatus(
+  stage: RunnerHandoffEvent['stage'],
+  name: string,
+  code?: RunnerHandoffEvent['code'],
+): string | null {
+  if (stage === 'refused' && code === 'unknown_specialist') return null;
   if (stage === 'started') return `🤝 Asking ${name}…`;
   if (stage === 'finished') return `✅ ${name} finished their part`;
   if (stage === 'failed' || stage === 'refused') return `⚠️ ${name} could not help with this part`;
